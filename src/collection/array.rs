@@ -1,22 +1,101 @@
-use core::{mem::MaybeUninit, ptr};
+use {
+    crate::{algebra::Natural, analysis::Real},
+    core::{marker::PhantomData, mem::MaybeUninit, ptr},
+    num_traits::ToPrimitive,
+};
 
-use crate::algebra::Natural;
+pub trait ArrayIndex: Natural + Copy {}
+
+impl ArrayIndex for usize {}
 
 /// An array is a thing that permits random access at integer offsets.
-pub trait Array<T> {
-    fn nth(&self, n: impl Natural) -> Option<&T>;
-    fn nth_mut(&mut self, n: impl Natural) -> Option<&mut T>;
-    fn len(&self) -> impl Natural;
-    fn generate<N: Natural, F: Fn(N) -> T>(len: N, gen: F) -> Self;
+pub trait Array<T>: Sized {
+    fn nth(&self, n: impl ArrayIndex) -> Option<&T>;
+    fn nth_mut(&mut self, n: impl ArrayIndex) -> Option<&mut T>;
+    fn len(&self) -> impl ArrayIndex;
+    fn generate<N: ArrayIndex, F: Fn(N) -> T>(len: N, gen: F) -> Self;
+
+    /// Auto Generated functions
+    /// Applies `f` to each pair of components of `self` and `other`.
+    fn component_wise(&self, other: &Self, mut f: impl Fn(&T, &T) -> T) -> Self {
+        Self::generate(self.len(), |i| {
+            f(self.nth(i).unwrap(), other.nth(i).unwrap())
+        })
+    }
+
+    fn fold<A>(&self, start_value: A, mut f: impl FnMut(A, &T) -> A) -> A {
+        let mut accumulated = start_value;
+        for i in 0..self.len().to_usize().unwrap() {
+            accumulated = f(accumulated, self.nth(i).unwrap());
+        }
+        accumulated
+    }
+
+    fn for_each<A>(&mut self, mut f: impl FnMut(&mut T)) {
+        for i in 0..self.len().to_usize().unwrap() {
+            f(self.nth_mut(i).unwrap());
+        }
+    }
+
+    fn iter<'a>(&'a self) -> ArrayIter<'a, T, Self> {
+        ArrayIter {
+            offset: 0,
+            array: self,
+            _phantom: Default::default(),
+        }
+    }
+
+    fn iter_mut<'a>(&'a mut self) -> ArrayMutIter<'a, T, Self> {
+        ArrayMutIter {
+            offset: 0,
+            array: self,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+pub struct ArrayIter<'a, T, A: Array<T>> {
+    offset: usize,
+    array: &'a A,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T: 'a, A: Array<T>> Iterator for ArrayIter<'a, T, A> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ind = self.offset;
+        self.offset += 1;
+        self.array.nth(ind)
+    }
+}
+
+pub struct ArrayMutIter<'a, T, A: Array<T>> {
+    offset: usize,
+    array: &'a mut A,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T: 'a, A: 'a + Array<T>> Iterator for ArrayMutIter<'a, T, A> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ind = self.offset;
+        self.offset += 1;
+        unsafe {
+            // convince the borrow checker that this lifetime is ok
+            std::mem::transmute(self.array.nth_mut(ind))
+        }
+    }
 }
 
 pub trait StaticLenArray<T> {
-    fn len() -> impl Natural;
-    fn generate<N: Natural, F: Fn(N) -> T>(gen: F) -> Self;
+    fn len() -> impl ArrayIndex;
+    fn generate<N: ArrayIndex, F: Fn(N) -> T>(gen: F) -> Self;
 }
 
 impl<T> Array<T> for Vec<T> {
-    fn nth(&self, n: impl Natural) -> Option<&T> {
+    fn nth(&self, n: impl ArrayIndex) -> Option<&T> {
         self.get(n.to_usize()?)
     }
 
@@ -24,11 +103,11 @@ impl<T> Array<T> for Vec<T> {
         self.get_mut(n.to_usize()?)
     }
 
-    fn len(&self) -> impl Natural {
+    fn len(&self) -> impl ArrayIndex {
         self.len()
     }
 
-    fn generate<N: Natural, F: Fn(N) -> T>(len: N, gen: F) -> Self {
+    fn generate<N: ArrayIndex, F: Fn(N) -> T>(len: N, gen: F) -> Self {
         let len = len.to_usize().unwrap();
         let mut retv = Vec::with_capacity(len);
         for ind in 0..len {
@@ -42,19 +121,19 @@ impl<T, const L: usize> Array<T> for [T; L]
 where
     [T; L]: Sized,
 {
-    fn nth(&self, n: impl Natural) -> Option<&T> {
+    fn nth(&self, n: impl ArrayIndex) -> Option<&T> {
         self.get(n.to_usize()?)
     }
 
-    fn nth_mut(&mut self, n: impl Natural) -> Option<&mut T> {
+    fn nth_mut(&mut self, n: impl ArrayIndex) -> Option<&mut T> {
         self.get_mut(n.to_usize()?)
     }
 
-    fn len(&self) -> impl Natural {
+    fn len(&self) -> impl ArrayIndex {
         L
     }
 
-    fn generate<N: Natural, F: Fn(N) -> T>(_: N, gen: F) -> Self {
+    fn generate<N: ArrayIndex, F: Fn(N) -> T>(_: N, gen: F) -> Self {
         <Self as StaticLenArray<T>>::generate(gen)
     }
 }
@@ -63,11 +142,11 @@ impl<T, const L: usize> StaticLenArray<T> for [T; L]
 where
     [T; L]: Sized,
 {
-    fn len() -> impl Natural {
+    fn len() -> impl ArrayIndex {
         L
     }
 
-    fn generate<N: Natural, F: Fn(N) -> T>(gen: F) -> Self {
+    fn generate<N: ArrayIndex, F: Fn(N) -> T>(gen: F) -> Self {
         let mut array: [T; L] = unsafe { MaybeUninit::uninit().assume_init() };
 
         for (i, element) in array.iter_mut().enumerate() {
@@ -77,3 +156,5 @@ where
         array
     }
 }
+
+trait RealArray<T: Real>: Array<T> {}

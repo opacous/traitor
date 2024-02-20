@@ -317,6 +317,7 @@
 #![feature(trait_alias)]
 #![feature(specialization)]
 #![feature(extra_log_consts)]
+#![feature(associated_type_bounds)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod algebra;

@@ -2,9 +2,9 @@
 //!Traits for ordered structures
 //!
 
-use crate::algebra::*;
-
 pub use core::cmp::{Ord, PartialOrd};
+
+use crate::algebra::*;
 
 ///
 ///A marker trait signifying that for `x > y`, `x+z > x+z` and `z+x > z+x` for all `z`

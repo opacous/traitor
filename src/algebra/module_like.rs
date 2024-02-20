@@ -32,11 +32,11 @@
 //!     * <i>for more information see the trait-level documentation</i>
 //!
 
-use crate::algebra::*;
-use crate::analysis::ComplexRing;
 pub use core::ops::{
     Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign,
 };
+
+use crate::{algebra::*, analysis::ComplexRing};
 
 ///
 ///A product between two vectors or module elements resulting in a scalar that is semi-linear in both arguments

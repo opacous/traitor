@@ -2,8 +2,7 @@
 //!Traits for [Real] and [Complex] properties and representations
 //!
 
-use crate::algebra::*;
-use crate::analysis::*;
+use crate::{algebra::*, analysis::*};
 
 ///
 ///Functions and constants for evaluative trigonometric values

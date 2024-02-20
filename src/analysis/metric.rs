@@ -2,8 +2,7 @@
 //!Traits for metric properties and function
 //!
 
-use crate::algebra::*;
-use crate::analysis::*;
+use crate::{algebra::*, analysis::*};
 
 ///
 ///A real-valued function on a set `X` that quantifies the "distance" between objects

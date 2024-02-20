@@ -2,14 +2,15 @@
 //!Traits for integers and natural numbers
 //!
 
-use core::convert::TryFrom;
-use core::iter::Iterator;
-use core::ops::{Rem, RemAssign};
-
-use num_traits::{FromPrimitive, ToPrimitive};
-
-use crate::algebra::*;
-use crate::analysis::ordered::*;
+use {
+    crate::{algebra::*, analysis::ordered::*},
+    core::{
+        convert::TryFrom,
+        iter::Iterator,
+        ops::{Rem, RemAssign},
+    },
+    num_traits::{FromPrimitive, ToPrimitive},
+};
 
 ///Aliases conversion traits to and from the primitive integer types
 pub trait CastPrimInt = TryFrom<i8>

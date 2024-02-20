@@ -85,8 +85,7 @@
 //!   the use here reflects a particular design choice more than a particular standard.
 //!
 
-use crate::algebra::*;
-use core::iter::Iterator;
+use {crate::algebra::*, core::iter::Iterator};
 
 ///A marker trait for stucts whose multiplication operation preserves addition,
 ///ie `z*(x+y)=z*x+z*y` and `(x+y)*z=x*z+y*z` for all `x`, `y`, and `z`.

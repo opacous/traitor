@@ -18,10 +18,7 @@
 //!For ease of use, members of each module have been re-exported into this one.
 //!
 
-pub use self::group_like::*;
-pub use self::integer::*;
-pub use self::module_like::*;
-pub use self::ring_like::*;
+pub use self::{group_like::*, integer::*, module_like::*, ring_like::*};
 
 pub mod group_like;
 pub mod integer;

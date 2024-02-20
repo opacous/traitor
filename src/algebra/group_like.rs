@@ -96,18 +96,19 @@
 //!
 //!
 
-pub use self::additive::*;
-pub use self::multiplicative::*;
+pub use self::{additive::*, multiplicative::*};
 
 ///Traits for group-like structures using addition
 pub mod additive {
-    use core::convert::From;
-    use core::ops::Mul;
-    pub use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
-    pub use num_traits::Zero;
-
-    use super::{repeated_doubling, repeated_doubling_neg};
-    use crate::algebra::{IntegerSubset, Natural, Ring, Semiring};
+    use {
+        super::{repeated_doubling, repeated_doubling_neg},
+        crate::algebra::{IntegerSubset, Natural, Ring, Semiring},
+        core::{convert::From, ops::Mul},
+    };
+    pub use {
+        core::ops::{Add, AddAssign, Neg, Sub, SubAssign},
+        num_traits::Zero,
+    };
 
     #[allow(unused_imports)]
     use crate::algebra::Integer;
@@ -331,12 +332,15 @@ pub mod additive {
 
 ///Traits for group-like structures using Multiplication
 pub mod multiplicative {
-    pub use core::ops::{Div, DivAssign, Mul, MulAssign};
-    use num_traits::Pow;
-    pub use num_traits::{Inv, One};
-
-    use super::{repeated_squaring, repeated_squaring_inv};
-    use crate::algebra::{IntegerSubset, Natural};
+    use {
+        super::{repeated_squaring, repeated_squaring_inv},
+        crate::algebra::{IntegerSubset, Natural},
+        num_traits::Pow,
+    };
+    pub use {
+        core::ops::{Div, DivAssign, Mul, MulAssign},
+        num_traits::{Inv, One},
+    };
 
     #[allow(unused_imports)]
     use crate::algebra::Integer;

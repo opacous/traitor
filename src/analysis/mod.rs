@@ -11,9 +11,7 @@
 //!For ease of use, members of each module have been re-exported into this one.
 //!
 
-pub use self::metric::*;
-pub use self::ordered::*;
-pub use self::real::*;
+pub use self::{metric::*, ordered::*, real::*};
 
 pub mod metric;
 pub mod ordered;
