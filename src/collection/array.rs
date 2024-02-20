@@ -55,13 +55,7 @@ where
     }
 
     fn generate<N: Natural, F: Fn(N) -> T>(_: N, gen: F) -> Self {
-        let mut array: [T; L] = unsafe { MaybeUninit::uninit().assume_init() };
-
-        for (i, element) in array.iter_mut().enumerate() {
-            *element = gen(N::from_usize(i).unwrap());
-        }
-
-        array
+        <Self as StaticLenArray<T>>::generate(gen)
     }
 }
 
@@ -74,6 +68,12 @@ where
     }
 
     fn generate<N: Natural, F: Fn(N) -> T>(gen: F) -> Self {
-        <Self as Array<T>>::generate(L, gen)
+        let mut array: [T; L] = unsafe { MaybeUninit::uninit().assume_init() };
+
+        for (i, element) in array.iter_mut().enumerate() {
+            *element = gen(N::from_usize(i).unwrap());
+        }
+
+        array
     }
 }
