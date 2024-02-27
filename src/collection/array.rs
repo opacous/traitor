@@ -37,6 +37,15 @@ pub trait Array<T>: Sized {
         }
     }
 
+    /// Short-hand for a zip and a fold
+    fn zip_fold<A>(&self, other: &Self, start_value: A, mut f: impl FnMut(A, (&T, &T)) -> A) -> A {
+        let mut accumulated = start_value;
+        for i in 0..self.len().to_usize().unwrap() {
+            accumulated = f(accumulated, (self.nth(i).unwrap(), other.nth(i).unwrap()));
+        }
+        accumulated
+    }
+
     fn iter<'a>(&'a self) -> ArrayIter<'a, T, Self> {
         ArrayIter {
             offset: 0,
@@ -99,7 +108,7 @@ impl<T> Array<T> for Vec<T> {
         self.get(n.to_usize()?)
     }
 
-    fn nth_mut(&mut self, n: impl Natural) -> Option<&mut T> {
+    fn nth_mut(&mut self, n: impl ArrayIndex) -> Option<&mut T> {
         self.get_mut(n.to_usize()?)
     }
 
@@ -157,4 +166,51 @@ where
     }
 }
 
-trait RealArray<T: Real>: Array<T> {}
+pub trait OrdArray<T: PartialOrd + Copy>: Array<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter()
+            .zip(other.iter())
+            .fold(true, |acc, (a, b)| acc && a == b)
+    }
+
+    fn min(&self, other: &Self) -> Self {
+        Self::generate(self.len(), |ind| {
+            let lhs = self.nth(ind).unwrap();
+            let rhs = other.nth(ind).unwrap();
+
+            if lhs.lt(rhs) {
+                *lhs
+            } else {
+                *rhs
+            }
+        })
+    }
+
+    fn max(&self, other: &Self) -> Self {
+        Self::generate(self.len(), |ind| {
+            let lhs = self.nth(ind).unwrap();
+            let rhs = other.nth(ind).unwrap();
+
+            if lhs.gt(rhs) {
+                *lhs
+            } else {
+                *rhs
+            }
+        })
+    }
+}
+
+/// Array of reals
+pub trait RealArray<T: Real>: Array<T> {}
+
+impl<T: Real + PartialOrd + Copy, R: RealArray<T>> OrdArray<T> for R {}
+
+#[derive(Default)]
+pub struct EuclideanMetric {}
+
+impl<T: Real, X: RealArray<T>> crate::analysis::Metric<X, T> for EuclideanMetric {
+    fn distance(&self, x1: X, x2: X) -> T {
+        x1.zip_fold(&x2, T::repr(0.0), |a, (x, y)| a + (x - y).pow(T::repr(2.0)))
+            .sqrt()
+    }
+}

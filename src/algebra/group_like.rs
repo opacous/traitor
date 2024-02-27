@@ -310,14 +310,24 @@ pub mod additive {
         }
     }
 
+    pub trait RefAddable = where for<'a> &'a Self: Sized + Add<&'a Self, Output = Self>;
+    pub trait RefSubable = where for<'a> &'a Self: Sized + Sub<&'a Self, Output = Self>;
+    pub trait RefNegable = where for<'a> &'a Self: Sized + Neg<Output = Self>;
+
     impl<G: AddMonoid + Negatable> MulZ for G {}
 
     ///A set with an fully described additive inverse
-    pub trait Negatable =
-        Sized + Clone + Neg<Output = Self> + Sub<Self, Output = Self> + SubAssign<Self>;
+    pub trait Negatable = Sized
+        + Clone
+        + Neg<Output = Self>
+        + Sub<Self, Output = Self>
+        + SubAssign<Self>
+        + RefSubable
+        + RefNegable;
 
     ///A set with an addition operation
-    pub trait AddMagma = Sized + Clone + Add<Self, Output = Self> + AddAssign<Self>;
+    pub trait AddMagma = Sized + Clone + Add<Self, Output = Self> + AddAssign<Self> + RefAddable;
+
     ///An associative additive magma
     pub trait AddSemigroup = AddMagma + AddAssociative;
     ///An additive semigroup with an identity element
@@ -500,11 +510,22 @@ pub mod multiplicative {
     }
     impl<G: MulMonoid + Invertable> PowZ for G {}
 
+    pub trait RefMulable = where for<'a> &'a Self: Sized + Mul<&'a Self, Output = Self>;
+    pub trait RefDivable = where for<'a> &'a Self: Sized + Div<&'a Self, Output = Self>;
+    pub trait RefInvable = where for<'a> &'a Self: Sized + Inv<Output = Self>;
+
     ///A set with an fully described multiplicative inverse
-    pub trait Invertable =
-        Sized + Clone + Inv<Output = Self> + Div<Self, Output = Self> + DivAssign<Self>;
+    pub trait Invertable = Sized
+        + Clone
+        + Inv<Output = Self>
+        + Div<Self, Output = Self>
+        + DivAssign<Self>
+        + RefDivable
+        + RefInvable;
+
     ///A set with a multiplication operation
-    pub trait MulMagma = Sized + Clone + Mul<Self, Output = Self> + MulAssign<Self>;
+    pub trait MulMagma = Sized + Clone + Mul<Self, Output = Self> + MulAssign<Self> + RefMulable;
+
     ///An associative multiplicative magma
     pub trait MulSemigroup = MulMagma + MulAssociative;
     ///A multiplicative semigroup with an identity element
@@ -627,7 +648,7 @@ macro_rules! impl_props {
     };
 }
 
-impl_props! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128; f32 f64 }
+impl_props! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128; f32 f64 &f32 &f64}
 
 #[cfg(std)]
 impl<'a> AddAssociative for ::std::borrow::Cow<'a, str> {}

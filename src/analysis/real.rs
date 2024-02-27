@@ -802,3 +802,17 @@ macro_rules! int_exp {
 }
 
 int_exp!(i8 i16 i32 i64 isize i128);
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn add_reals<R: Real>(a: R, b: R) -> R {
+        a + b
+    }
+
+    #[test]
+    fn addition() {
+        assert!(add_reals(1_64, 3_f64) == 4_f64);
+    }
+}

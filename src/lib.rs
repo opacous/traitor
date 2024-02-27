@@ -324,3 +324,11 @@ pub mod algebra;
 pub mod analysis;
 pub mod collection;
 pub mod linear;
+
+pub trait IntoClass<Destination> {
+    fn into(self) -> Destination;
+}
+
+pub trait FromClass<Origin> {
+    fn from(origin: Origin) -> Self;
+}

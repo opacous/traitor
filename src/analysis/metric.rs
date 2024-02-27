@@ -26,6 +26,9 @@ use crate::{algebra::*, analysis::*};
 ///
 pub trait Metric<X, R: Real> {
     fn distance(&self, x1: X, x2: X) -> R;
+    fn distance_squared(&self, x1: X, x2: X) -> R {
+        self.distance(x1, x2).pow(R::repr(2.0))
+    }
 }
 
 ///

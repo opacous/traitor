@@ -5,7 +5,7 @@
 use {
     crate::{algebra::*, analysis::ordered::*},
     core::{
-        convert::TryFrom,
+        convert::{TryFrom, TryInto},
         iter::Iterator,
         ops::{Rem, RemAssign},
     },
@@ -22,7 +22,22 @@ pub trait CastPrimInt = TryFrom<i8>
     + TryFrom<i64>
     + TryFrom<u64>
     + TryFrom<i128>
-    + TryFrom<u128>;
+    + TryFrom<u128>
+    + TryFrom<usize>
+    + TryFrom<isize>;
+
+pub trait IntoPrimInt = TryInto<i8>
+    + TryInto<u8>
+    + TryInto<i16>
+    + TryInto<u16>
+    + TryInto<i32>
+    + TryInto<u32>
+    + TryInto<i64>
+    + TryInto<u64>
+    + TryInto<i128>
+    + TryInto<u128>
+    + TryInto<usize>
+    + TryInto<isize>;
 
 ///
 ///A subset of the Integers that has all of the major integer operations
@@ -44,6 +59,7 @@ pub trait IntegerSubset:
     + Eq
     + Clone
     + CastPrimInt
+    + IntoPrimInt
     + ToPrimitive
     + FromPrimitive
     + EuclideanSemidomain
