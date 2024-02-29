@@ -1,0 +1,15 @@
+[package]
+name = "traitor_macros"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc_macro = true
+
+[dependencies]
+syn = { version = "2.0.41", features = ["full", "extra-traits"] }
+quote = "1.0.33"
+proc-macro2 = "1.0.70"
+macro_state = "0.2.0"

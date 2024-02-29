@@ -317,16 +317,11 @@ pub mod additive {
     impl<G: AddMonoid + Negatable> MulZ for G {}
 
     ///A set with an fully described additive inverse
-    pub trait Negatable = Sized
-        + Clone
-        + Neg<Output = Self>
-        + Sub<Self, Output = Self>
-        + SubAssign<Self>
-        + RefSubable
-        + RefNegable;
+    pub trait Negatable =
+        Sized + Clone + Neg<Output = Self> + Sub<Self, Output = Self> + SubAssign<Self>;
 
     ///A set with an addition operation
-    pub trait AddMagma = Sized + Clone + Add<Self, Output = Self> + AddAssign<Self> + RefAddable;
+    pub trait AddMagma = Sized + Clone + Add<Self, Output = Self> + AddAssign<Self>;
 
     ///An associative additive magma
     pub trait AddSemigroup = AddMagma + AddAssociative;
@@ -515,16 +510,11 @@ pub mod multiplicative {
     pub trait RefInvable = where for<'a> &'a Self: Sized + Inv<Output = Self>;
 
     ///A set with an fully described multiplicative inverse
-    pub trait Invertable = Sized
-        + Clone
-        + Inv<Output = Self>
-        + Div<Self, Output = Self>
-        + DivAssign<Self>
-        + RefDivable
-        + RefInvable;
+    pub trait Invertable =
+        Sized + Clone + Inv<Output = Self> + Div<Self, Output = Self> + DivAssign<Self>;
 
     ///A set with a multiplication operation
-    pub trait MulMagma = Sized + Clone + Mul<Self, Output = Self> + MulAssign<Self> + RefMulable;
+    pub trait MulMagma = Sized + Clone + Mul<Self, Output = Self> + MulAssign<Self>;
 
     ///An associative multiplicative magma
     pub trait MulSemigroup = MulMagma + MulAssociative;

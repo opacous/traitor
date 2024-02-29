@@ -1,29 +1,50 @@
 use {
-    crate::{algebra::Natural, analysis::Real},
-    core::{marker::PhantomData, mem::MaybeUninit, ptr},
+    crate::{
+        algebra::{
+            Inv, Natural, RefAddable, RefDivable, RefInvable, RefMulable, RefNegable, RefSubable,
+            VectorSpace,
+        },
+        analysis::{Metric, Real},
+        Bound, B,
+    },
+    core::{
+        marker::PhantomData,
+        mem::MaybeUninit,
+        ops::{Add, Div, Mul, Sub},
+        ptr,
+    },
     num_traits::ToPrimitive,
 };
 
-pub trait ArrayIndex: Natural + Copy {}
-
-impl ArrayIndex for usize {}
-
 /// An array is a thing that permits random access at integer offsets.
-pub trait Array<T>: Sized {
-    fn nth(&self, n: impl ArrayIndex) -> Option<&T>;
-    fn nth_mut(&mut self, n: impl ArrayIndex) -> Option<&mut T>;
-    fn len(&self) -> impl ArrayIndex;
-    fn generate<N: ArrayIndex, F: Fn(N) -> T>(len: N, gen: F) -> Self;
+pub trait Array: Sized {
+    type Element;
+    type GenOut: Array = Self;
+
+    fn nth(&self, n: usize) -> Option<&Self::Element>;
+    fn len(&self) -> usize;
+    fn generate<F: Fn(usize) -> Self::Element>(len: usize, gen: F) -> Self::GenOut;
 
     /// Auto Generated functions
     /// Applies `f` to each pair of components of `self` and `other`.
-    fn component_wise(&self, other: &Self, mut f: impl Fn(&T, &T) -> T) -> Self {
+    #[inline(always)]
+    fn component_wise(
+        &self,
+        other: &Self,
+        mut f: impl Fn(&Self::Element, &Self::Element) -> Self::Element,
+    ) -> Self::GenOut {
         Self::generate(self.len(), |i| {
             f(self.nth(i).unwrap(), other.nth(i).unwrap())
         })
     }
 
-    fn fold<A>(&self, start_value: A, mut f: impl FnMut(A, &T) -> A) -> A {
+    #[inline(always)]
+    fn map(&self, mut f: impl Fn(&Self::Element) -> Self::Element) -> Self::GenOut {
+        Self::generate(self.len(), |i| f(self.nth(i).unwrap()))
+    }
+
+    #[inline(always)]
+    fn fold<A>(&self, start_value: A, mut f: impl FnMut(A, &Self::Element) -> A) -> A {
         let mut accumulated = start_value;
         for i in 0..self.len().to_usize().unwrap() {
             accumulated = f(accumulated, self.nth(i).unwrap());
@@ -31,14 +52,14 @@ pub trait Array<T>: Sized {
         accumulated
     }
 
-    fn for_each<A>(&mut self, mut f: impl FnMut(&mut T)) {
-        for i in 0..self.len().to_usize().unwrap() {
-            f(self.nth_mut(i).unwrap());
-        }
-    }
-
+    #[inline(always)]
     /// Short-hand for a zip and a fold
-    fn zip_fold<A>(&self, other: &Self, start_value: A, mut f: impl FnMut(A, (&T, &T)) -> A) -> A {
+    fn zip_fold<A>(
+        &self,
+        other: &Self,
+        start_value: A,
+        mut f: impl FnMut(A, (&Self::Element, &Self::Element)) -> A,
+    ) -> A {
         let mut accumulated = start_value;
         for i in 0..self.len().to_usize().unwrap() {
             accumulated = f(accumulated, (self.nth(i).unwrap(), other.nth(i).unwrap()));
@@ -46,32 +67,45 @@ pub trait Array<T>: Sized {
         accumulated
     }
 
-    fn iter<'a>(&'a self) -> ArrayIter<'a, T, Self> {
+    #[inline(always)]
+    fn iter<'a>(&'a self) -> ArrayIter<'a, Self> {
         ArrayIter {
             offset: 0,
             array: self,
-            _phantom: Default::default(),
         }
     }
+}
 
-    fn iter_mut<'a>(&'a mut self) -> ArrayMutIter<'a, T, Self> {
+// an array that generates itself
+pub trait OwnedArray = Array<GenOut = Self>;
+
+/// An array is a thing that permits random access at integer offsets.
+pub trait ArrayMut: Array {
+    fn nth_mut(&mut self, n: usize) -> Option<&mut Self::Element>;
+
+    fn iter_mut<'a>(&'a mut self) -> ArrayMutIter<'a, Self> {
         ArrayMutIter {
             offset: 0,
             array: self,
-            _phantom: Default::default(),
+        }
+    }
+
+    fn for_each(&mut self, mut f: impl FnMut(&mut Self::Element)) {
+        for i in 0..self.len().to_usize().unwrap() {
+            f(self.nth_mut(i).unwrap());
         }
     }
 }
 
-pub struct ArrayIter<'a, T, A: Array<T>> {
+pub struct ArrayIter<'a, A: Array> {
     offset: usize,
     array: &'a A,
-    _phantom: PhantomData<T>,
 }
 
-impl<'a, T: 'a, A: Array<T>> Iterator for ArrayIter<'a, T, A> {
-    type Item = &'a T;
+impl<'a, A: 'a + Array> Iterator for ArrayIter<'a, A> {
+    type Item = &'a A::Element;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let ind = self.offset;
         self.offset += 1;
@@ -79,15 +113,15 @@ impl<'a, T: 'a, A: Array<T>> Iterator for ArrayIter<'a, T, A> {
     }
 }
 
-pub struct ArrayMutIter<'a, T, A: Array<T>> {
+pub struct ArrayMutIter<'a, A: Array> {
     offset: usize,
     array: &'a mut A,
-    _phantom: PhantomData<T>,
 }
 
-impl<'a, T: 'a, A: 'a + Array<T>> Iterator for ArrayMutIter<'a, T, A> {
-    type Item = &'a mut T;
+impl<'a, A: 'a + ArrayMut> Iterator for ArrayMutIter<'a, A> {
+    type Item = &'a mut A::Element;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let ind = self.offset;
         self.offset += 1;
@@ -99,51 +133,70 @@ impl<'a, T: 'a, A: 'a + Array<T>> Iterator for ArrayMutIter<'a, T, A> {
 }
 
 pub trait StaticLenArray<T> {
-    fn len() -> impl ArrayIndex;
-    fn generate<N: ArrayIndex, F: Fn(N) -> T>(gen: F) -> Self;
+    fn len() -> usize;
+    fn generate<F: Fn(usize) -> T>(gen: F) -> Self;
 }
 
-impl<T> Array<T> for Vec<T> {
-    fn nth(&self, n: impl ArrayIndex) -> Option<&T> {
+impl<T> Array for Vec<T> {
+    type Element = T;
+
+    #[inline(always)]
+    fn nth(&self, n: usize) -> Option<&T> {
         self.get(n.to_usize()?)
     }
 
-    fn nth_mut(&mut self, n: impl ArrayIndex) -> Option<&mut T> {
-        self.get_mut(n.to_usize()?)
-    }
-
-    fn len(&self) -> impl ArrayIndex {
+    #[inline(always)]
+    fn len(&self) -> usize {
         self.len()
     }
 
-    fn generate<N: ArrayIndex, F: Fn(N) -> T>(len: N, gen: F) -> Self {
+    #[inline(always)]
+    fn generate<F: Fn(usize) -> T>(len: usize, gen: F) -> Self {
         let len = len.to_usize().unwrap();
         let mut retv = Vec::with_capacity(len);
         for ind in 0..len {
-            retv.push(gen(N::from_usize(ind).unwrap()))
+            retv.push(gen(ind))
         }
         retv
     }
 }
 
-impl<T, const L: usize> Array<T> for [T; L]
+impl<T> ArrayMut for Vec<T> {
+    #[inline(always)]
+    fn nth_mut(&mut self, n: usize) -> Option<&mut T> {
+        self.get_mut(n)
+    }
+}
+
+impl<T, const L: usize> Array for [T; L]
 where
     [T; L]: Sized,
 {
-    fn nth(&self, n: impl ArrayIndex) -> Option<&T> {
-        self.get(n.to_usize()?)
+    type Element = T;
+
+    #[inline(always)]
+    fn nth(&self, n: usize) -> Option<&T> {
+        self.get(n)
     }
 
-    fn nth_mut(&mut self, n: impl ArrayIndex) -> Option<&mut T> {
-        self.get_mut(n.to_usize()?)
-    }
-
-    fn len(&self) -> impl ArrayIndex {
+    #[inline(always)]
+    fn len(&self) -> usize {
         L
     }
 
-    fn generate<N: ArrayIndex, F: Fn(N) -> T>(_: N, gen: F) -> Self {
+    #[inline(always)]
+    fn generate<F: Fn(usize) -> T>(_: usize, gen: F) -> Self {
         <Self as StaticLenArray<T>>::generate(gen)
+    }
+}
+
+impl<T, const L: usize> ArrayMut for [T; L]
+where
+    [T; L]: Sized,
+{
+    #[inline(always)]
+    fn nth_mut(&mut self, n: usize) -> Option<&mut T> {
+        self.get_mut(n.to_usize()?)
     }
 }
 
@@ -151,29 +204,32 @@ impl<T, const L: usize> StaticLenArray<T> for [T; L]
 where
     [T; L]: Sized,
 {
-    fn len() -> impl ArrayIndex {
+    #[inline(always)]
+    fn len() -> usize {
         L
     }
 
-    fn generate<N: ArrayIndex, F: Fn(N) -> T>(gen: F) -> Self {
+    #[inline(always)]
+    fn generate<F: Fn(usize) -> T>(gen: F) -> Self {
         let mut array: [T; L] = unsafe { MaybeUninit::uninit().assume_init() };
 
         for (i, element) in array.iter_mut().enumerate() {
-            *element = gen(N::from_usize(i).unwrap());
+            *element = gen(i);
         }
 
         array
     }
 }
 
-pub trait OrdArray<T: PartialOrd + Copy>: Array<T> {
+pub trait OrdArrayConstraint<T: PartialOrd + Copy> = Array<Element: PartialOrd + Copy>;
+pub trait OrdArray<T: PartialOrd + Copy>: OrdArrayConstraint<T> {
     fn eq(&self, other: &Self) -> bool {
         self.iter()
             .zip(other.iter())
             .fold(true, |acc, (a, b)| acc && a == b)
     }
 
-    fn min(&self, other: &Self) -> Self {
+    fn min(&self, other: &Self) -> Self::GenOut {
         Self::generate(self.len(), |ind| {
             let lhs = self.nth(ind).unwrap();
             let rhs = other.nth(ind).unwrap();
@@ -186,7 +242,7 @@ pub trait OrdArray<T: PartialOrd + Copy>: Array<T> {
         })
     }
 
-    fn max(&self, other: &Self) -> Self {
+    fn max(&self, other: &Self) -> Self::GenOut {
         Self::generate(self.len(), |ind| {
             let lhs = self.nth(ind).unwrap();
             let rhs = other.nth(ind).unwrap();
@@ -200,17 +256,239 @@ pub trait OrdArray<T: PartialOrd + Copy>: Array<T> {
     }
 }
 
+impl<T: PartialOrd + Copy, A: OrdArrayConstraint<T>> OrdArray<T> for A {}
+
+pub trait ArraySubConstraint = Array<Element: RefSubable>;
+pub trait ArraySub: ArraySubConstraint {
+    #[inline(always)]
+    fn sub(self, other: &Self) -> Self::GenOut {
+        self.component_wise(other, |x, y| x - y)
+    }
+}
+impl<A: ArraySubConstraint> ArraySub for A {}
+
+pub trait ArrayAddConstraint = Array<Element: RefAddable>;
+pub trait ArrayAdd: ArrayAddConstraint {
+    #[inline(always)]
+    fn add(self, other: &Self) -> Self::GenOut {
+        self.component_wise(other, |x, y| x + y)
+    }
+}
+impl<A: ArrayAddConstraint> ArrayAdd for A {}
+
+pub trait ArrayMulConstraint = Array<Element: RefMulable>;
+pub trait ArrayMul: ArrayMulConstraint {
+    #[inline(always)]
+    fn mul(self, other: &Self) -> Self::GenOut {
+        self.component_wise(other, |x, y| x * y)
+    }
+}
+impl<A: ArrayMulConstraint> ArrayMul for A {}
+
+pub trait ArrayDivConstraint = Array<Element: RefDivable>;
+pub trait ArrayDiv: ArrayDivConstraint {
+    #[inline(always)]
+    fn div(self, other: &Self) -> Self::GenOut {
+        self.component_wise(other, |x, y| x / y)
+    }
+}
+impl<A: ArrayDivConstraint> ArrayDiv for A {}
+
+pub trait ArrayNegConstraint = Array<Element: RefNegable>;
+pub trait ArrayNeg: ArrayNegConstraint {
+    #[inline(always)]
+    fn neg(self) -> Self::GenOut {
+        self.map(|x| -x)
+    }
+}
+impl<A: ArrayNegConstraint> ArrayNeg for A {}
+
+pub trait ArrayInvConstraint = Array<Element: RefInvable>;
+pub trait ArrayInv: ArrayInvConstraint {
+    #[inline(always)]
+    fn inv(self) -> Self::GenOut {
+        self.map(|x| x.inv())
+    }
+}
+impl<A: ArrayInvConstraint> ArrayInv for A {}
+
+#[macro_export]
+macro_rules! array_impls {
+    (t:ty) => {
+        impl<T: RefAddable> ArrayAdd<T> for $t<T> {}
+        impl<T: RefSubable> ArraySub<T> for $t<T> {}
+        impl<T: RefMulable> ArrayMul<T> for $t<T> {}
+        impl<T: RefInvable> ArrayInv<T> for $t<T> {}
+        impl<T: RefDivable> ArrayDiv<T> for $t<T> {}
+        impl<T: RefNegable> ArrayNeg<T> for $t<T> {}
+    };
+    (t:ty, r:ty) => {
+        impl ArrayAdd<$r> for $t {}
+        impl ArraySub<$r> for $t {}
+        impl ArrayMul<$r> for $t {}
+        impl ArrayInv<$r> for $t {}
+        impl ArrayDiv<$r> for $t {}
+        impl ArrayNeg<$r> for $t {}
+    };
+}
+
+impl<A: Array> Array for Bound<A> {
+    type Element = A::Element;
+    type GenOut = Bound<A::GenOut>;
+    #[inline(always)]
+    fn nth(&self, n: usize) -> Option<&A::Element> {
+        self.0.nth(n)
+    }
+
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline(always)]
+    fn generate<F: Fn(usize) -> A::Element>(len: usize, gen: F) -> Self::GenOut {
+        A::generate(len, gen).b()
+    }
+}
+
+impl<A: ArrayMut> ArrayMut for Bound<A> {
+    #[inline(always)]
+    fn nth_mut(&mut self, n: usize) -> Option<&mut A::Element> {
+        self.0.nth_mut(n)
+    }
+}
+
+impl<'a, A: Array> Array for &'a A {
+    type GenOut = A::GenOut;
+    type Element = A::Element;
+
+    #[inline(always)]
+    fn nth(&self, n: usize) -> Option<&Self::Element> {
+        (**self).nth(n)
+    }
+
+    #[inline(always)]
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    #[inline(always)]
+    fn generate<F: Fn(usize) -> Self::Element>(len: usize, gen: F) -> Self::GenOut {
+        A::generate(len, gen)
+    }
+}
+
+impl<'a, A: Array> Array for &'a mut A {
+    type GenOut = A::GenOut;
+    type Element = A::Element;
+
+    #[inline(always)]
+    fn nth(&self, n: usize) -> Option<&Self::Element> {
+        (**self).nth(n)
+    }
+
+    #[inline(always)]
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    #[inline(always)]
+    fn generate<F: Fn(usize) -> Self::Element>(len: usize, gen: F) -> Self::GenOut {
+        A::generate(len, gen)
+    }
+}
+
+impl<'a, A: ArrayMut> ArrayMut for &'a mut A {
+    #[inline(always)]
+    fn nth_mut(&mut self, n: usize) -> Option<&mut Self::Element> {
+        (*self).nth_mut(n)
+    }
+}
+
+impl<A> std::ops::Add for Bound<A>
+where
+    A: ArrayAdd,
+{
+    type Output = A::GenOut;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.0.add(&rhs.0)
+    }
+}
+
+impl<A> std::ops::Sub for Bound<A>
+where
+    A: ArraySub,
+{
+    type Output = A::GenOut;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.0.sub(&rhs.0)
+    }
+}
+
+impl<A> std::ops::Neg for Bound<A>
+where
+    A: ArrayNeg,
+{
+    type Output = A::GenOut;
+
+    fn neg(self) -> Self::Output {
+        self.0.neg()
+    }
+}
+
+impl<A> std::ops::Mul for Bound<A>
+where
+    A: ArrayMul,
+{
+    type Output = A::GenOut;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        self.0.mul(&rhs.0)
+    }
+}
+
+impl<A> std::ops::Div for Bound<A>
+where
+    A: ArrayDiv,
+{
+    type Output = A::GenOut;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        self.0.div(&rhs.0)
+    }
+}
+
+impl<A> Inv for Bound<A>
+where
+    A: ArrayInv,
+{
+    type Output = A::GenOut;
+
+    fn inv(self) -> Self::Output {
+        self.0.inv()
+    }
+}
+
+pub trait RefMath = RefAddable + RefSubable + RefNegable + RefMulable + RefDivable + RefInvable;
+pub trait ArrayMath = ArrayAdd + ArraySub + ArrayNeg + ArrayMul + ArrayDiv + ArrayInv;
+
+pub trait RealArrayConstraint<T: Real + RefMath> = Array<GenOut: Array>;
 /// Array of reals
-pub trait RealArray<T: Real>: Array<T> {}
+pub trait RealArray<T: Real + RefMath>: RealArrayConstraint<T> {}
+impl<T: Real + RefMath, A: RealArrayConstraint<T>> RealArray<T> for A {}
 
-impl<T: Real + PartialOrd + Copy, R: RealArray<T>> OrdArray<T> for R {}
+//impl<T: Real + RefMath + PartialOrd + Copy, R: RealArray<T>> OrdArray<T> for R {}
 
-#[derive(Default)]
-pub struct EuclideanMetric {}
+// Haven't figured out yet how to use InnerProductMetric to impl this...
+pub struct EuclideanMetric;
 
-impl<T: Real, X: RealArray<T>> crate::analysis::Metric<X, T> for EuclideanMetric {
-    fn distance(&self, x1: X, x2: X) -> T {
-        x1.zip_fold(&x2, T::repr(0.0), |a, (x, y)| a + (x - y).pow(T::repr(2.0)))
+impl<'a, R: Real + RefSubable + RefAddable, X: Array<Element = R>> Metric<&'a X, R>
+    for EuclideanMetric
+{
+    fn distance(&self, x1: &'a X, x2: &'a X) -> R {
+        x1.zip_fold(x2, R::repr(0.0), |a, (x, y)| a + (x - y).pow(R::repr(2.0)))
             .sqrt()
     }
 }
