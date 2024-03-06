@@ -2,24 +2,25 @@ use {
     crate::{
         algebra::{
             Inv, Natural, RefAddable, RefDivable, RefInvable, RefMulable, RefNegable, RefSubable,
-            VectorSpace,
         },
-        analysis::{Metric, Real},
+        analysis::{Metric, Real, RealExponential},
         Bound, B,
     },
     core::{
-        marker::PhantomData,
         mem::MaybeUninit,
         ops::{Add, Div, Mul, Sub},
-        ptr,
     },
     num_traits::ToPrimitive,
+    traitor_macros::auto_gen_impl,
 };
+
+mod metric;
+pub use metric::*;
 
 /// An array is a thing that permits random access at integer offsets.
 pub trait Array: Sized {
     type Element;
-    type GenOut: Array = Self;
+    type GenOut: OwnedArray;
 
     fn nth(&self, n: usize) -> Option<&Self::Element>;
     fn len(&self) -> usize;
@@ -77,7 +78,18 @@ pub trait Array: Sized {
 }
 
 // an array that generates itself
-pub trait OwnedArray = Array<GenOut = Self>;
+pub trait OwnedArray = Array<GenOut = Self> + ArrayMut;
+
+#[auto_gen_impl(CloneArrayConstraint)]
+pub trait CloneArray: Array<Element: Clone> + Sized {
+    fn from_value(value: Self::Element, len: usize) -> Self::GenOut {
+        Self::generate(len, |_| value.clone())
+    }
+
+    fn dup(&self) -> Self::GenOut {
+        Self::generate(self.len(), |ind| self.nth(ind).unwrap().clone())
+    }
+}
 
 /// An array is a thing that permits random access at integer offsets.
 pub trait ArrayMut: Array {
@@ -139,6 +151,7 @@ pub trait StaticLenArray<T> {
 
 impl<T> Array for Vec<T> {
     type Element = T;
+    type GenOut = Vec<T>;
 
     #[inline(always)]
     fn nth(&self, n: usize) -> Option<&T> {
@@ -173,6 +186,7 @@ where
     [T; L]: Sized,
 {
     type Element = T;
+    type GenOut = [T; L];
 
     #[inline(always)]
     fn nth(&self, n: usize) -> Option<&T> {
@@ -221,8 +235,8 @@ where
     }
 }
 
-pub trait OrdArrayConstraint<T: PartialOrd + Copy> = Array<Element: PartialOrd + Copy>;
-pub trait OrdArray<T: PartialOrd + Copy>: OrdArrayConstraint<T> {
+#[auto_gen_impl(OrdArrayConstraint)]
+pub trait OrdArray: Array<Element: PartialOrd + Copy> {
     fn eq(&self, other: &Self) -> bool {
         self.iter()
             .zip(other.iter())
@@ -256,82 +270,71 @@ pub trait OrdArray<T: PartialOrd + Copy>: OrdArrayConstraint<T> {
     }
 }
 
-impl<T: PartialOrd + Copy, A: OrdArrayConstraint<T>> OrdArray<T> for A {}
-
-pub trait ArraySubConstraint = Array<Element: RefSubable>;
-pub trait ArraySub: ArraySubConstraint {
+#[auto_gen_impl(ArraySubConstraint)]
+pub trait ArraySub: Array<Element: RefSubable> {
     #[inline(always)]
     fn sub(self, other: &Self) -> Self::GenOut {
         self.component_wise(other, |x, y| x - y)
     }
 }
-impl<A: ArraySubConstraint> ArraySub for A {}
 
-pub trait ArrayAddConstraint = Array<Element: RefAddable>;
-pub trait ArrayAdd: ArrayAddConstraint {
+#[auto_gen_impl(ArrayAddConstraint)]
+pub trait ArrayAdd: Array<Element: RefAddable> {
     #[inline(always)]
     fn add(self, other: &Self) -> Self::GenOut {
         self.component_wise(other, |x, y| x + y)
     }
 }
-impl<A: ArrayAddConstraint> ArrayAdd for A {}
 
-pub trait ArrayMulConstraint = Array<Element: RefMulable>;
-pub trait ArrayMul: ArrayMulConstraint {
+#[auto_gen_impl(ArrayMulConstraint)]
+pub trait ArrayMul: Array<Element: RefMulable> {
     #[inline(always)]
     fn mul(self, other: &Self) -> Self::GenOut {
         self.component_wise(other, |x, y| x * y)
     }
 }
-impl<A: ArrayMulConstraint> ArrayMul for A {}
 
-pub trait ArrayDivConstraint = Array<Element: RefDivable>;
-pub trait ArrayDiv: ArrayDivConstraint {
+#[auto_gen_impl(ArrayDivConstraint)]
+pub trait ArrayDiv: Array<Element: RefDivable> {
     #[inline(always)]
     fn div(self, other: &Self) -> Self::GenOut {
         self.component_wise(other, |x, y| x / y)
     }
 }
-impl<A: ArrayDivConstraint> ArrayDiv for A {}
 
-pub trait ArrayNegConstraint = Array<Element: RefNegable>;
-pub trait ArrayNeg: ArrayNegConstraint {
+#[auto_gen_impl(ArrayNegConstraint)]
+pub trait ArrayNeg: Array<Element: RefNegable> {
     #[inline(always)]
     fn neg(self) -> Self::GenOut {
         self.map(|x| -x)
     }
 }
-impl<A: ArrayNegConstraint> ArrayNeg for A {}
 
-pub trait ArrayInvConstraint = Array<Element: RefInvable>;
-pub trait ArrayInv: ArrayInvConstraint {
+// pub trait ArrayInvConstraint = Array<Element: RefInvable>;
+// pub trait ArrayInv: ArrayInvConstraint {
+//     #[inline(always)]
+//     fn inv(self) -> Self::GenOut {
+//         self.map(|x| x.inv())
+//     }
+// }
+// impl<A: ArrayInvConstraint> ArrayInv for A {}
+
+// A#[macro_export]
+// macro_rules! auto_trait {
+//     ($trait_name:ident : $constraint_name:ident = $constaints:stmt) => {
+//         pub trait $constraint_name = $constraints;
+//         impl<A: $constaint_name> $trait_name for A {}
+//     };
+// }
+//
+// auto_trait!(ArrayInv : ArrayInvConstraint = Array<Element: RefInvable>);
+#[auto_gen_impl(ArrayInvConstraint)]
+pub trait ArrayInv: Array<Element: RefInvable> {
     #[inline(always)]
     fn inv(self) -> Self::GenOut {
         self.map(|x| x.inv())
     }
 }
-impl<A: ArrayInvConstraint> ArrayInv for A {}
-
-#[macro_export]
-macro_rules! array_impls {
-    (t:ty) => {
-        impl<T: RefAddable> ArrayAdd<T> for $t<T> {}
-        impl<T: RefSubable> ArraySub<T> for $t<T> {}
-        impl<T: RefMulable> ArrayMul<T> for $t<T> {}
-        impl<T: RefInvable> ArrayInv<T> for $t<T> {}
-        impl<T: RefDivable> ArrayDiv<T> for $t<T> {}
-        impl<T: RefNegable> ArrayNeg<T> for $t<T> {}
-    };
-    (t:ty, r:ty) => {
-        impl ArrayAdd<$r> for $t {}
-        impl ArraySub<$r> for $t {}
-        impl ArrayMul<$r> for $t {}
-        impl ArrayInv<$r> for $t {}
-        impl ArrayDiv<$r> for $t {}
-        impl ArrayNeg<$r> for $t {}
-    };
-}
-
 impl<A: Array> Array for Bound<A> {
     type Element = A::Element;
     type GenOut = Bound<A::GenOut>;
@@ -474,21 +477,12 @@ where
 pub trait RefMath = RefAddable + RefSubable + RefNegable + RefMulable + RefDivable + RefInvable;
 pub trait ArrayMath = ArrayAdd + ArraySub + ArrayNeg + ArrayMul + ArrayDiv + ArrayInv;
 
-pub trait RealArrayConstraint<T: Real + RefMath> = Array<GenOut: Array>;
 /// Array of reals
-pub trait RealArray<T: Real + RefMath>: RealArrayConstraint<T> {}
-impl<T: Real + RefMath, A: RealArrayConstraint<T>> RealArray<T> for A {}
-
-//impl<T: Real + RefMath + PartialOrd + Copy, R: RealArray<T>> OrdArray<T> for R {}
-
-// Haven't figured out yet how to use InnerProductMetric to impl this...
-pub struct EuclideanMetric;
-
-impl<'a, R: Real + RefSubable + RefAddable, X: Array<Element = R>> Metric<&'a X, R>
-    for EuclideanMetric
+#[auto_gen_impl(RealArrayConstraint)]
+pub trait RealArray:
+    Array<Element: Real, GenOut: Array<Element: Real> + CloneArray> + OrdArray + ArrayMath + CloneArray
 {
-    fn distance(&self, x1: &'a X, x2: &'a X) -> R {
-        x1.zip_fold(x2, R::repr(0.0), |a, (x, y)| a + (x - y).pow(R::repr(2.0)))
-            .sqrt()
+    fn repr(value: f64) -> <Self::GenOut as Array>::Element {
+        <Self::GenOut as Array>::Element::repr(value)
     }
 }

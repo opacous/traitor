@@ -560,7 +560,7 @@ pub trait ComplexField = Field + ComplexSubset;
 ///as error codes, but usage of such values is discouraged in favor of alternative functions that return
 ///[optional](::core::option::Option) values instead
 ///
-pub trait Real: ArchField + ComplexSubset<Real = Self> + Trig + RealExponential {
+pub trait Real: ArchField + ComplexSubset<Real = Self> + Trig + RealExponential + Sign {
     ///
     ///Approximates this real number as a 64-bit floating point
     ///
@@ -580,6 +580,13 @@ pub trait Real: ArchField + ComplexSubset<Real = Self> + Trig + RealExponential 
     ///could have a different precision than the f64
     ///
     fn repr(f: f64) -> Self;
+
+    fn is_finite(&self) -> bool;
+
+    #[inline(always)]
+    fn transfer<R: Real>(self) -> R {
+        R::repr(self.approx())
+    }
 }
 
 ///A type representing the complex numbers
@@ -772,8 +779,8 @@ macro_rules! impl_real {
         impl Real for $f {
             #[inline(always)] fn approx(self) -> f64 {self as f64}
             #[inline(always)] fn repr(f: f64) -> Self {f as $f}
+            #[inline(always)] fn is_finite(&self) -> bool { self.is_finite() }
         }
-
     )*}
 }
 
@@ -802,17 +809,3 @@ macro_rules! int_exp {
 }
 
 int_exp!(i8 i16 i32 i64 isize i128);
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    fn add_reals<R: Real>(a: R, b: R) -> R {
-        a + b
-    }
-
-    #[test]
-    fn addition() {
-        assert!(add_reals(1_64, 3_f64) == 4_f64);
-    }
-}

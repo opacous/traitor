@@ -325,6 +325,7 @@ pub mod algebra;
 pub mod analysis;
 pub mod collection;
 pub mod linear;
+pub mod ops;
 
 pub trait IntoClass<Destination> {
     fn into(self) -> Destination;
