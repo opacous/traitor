@@ -1,101 +1,7 @@
-//!
-//!Traits for structures with both an addition and multiplication operation
-//!
-//!While ring-like structures can technically apply to any pair of operations, for ease of use
-//!and to stick with mathematical convention, these operations are taken to be specifically addition
-//!and multiplication where multiplication distributes over addition.
-//!
-//!# Implementation
-//!
-//!This module build upon and behaves in a way similar to the [group-like](crate::algebra::group_like)
-//!structures. However, in addition to the basic group traits, the following properties are also considered:
-//! * Distributivity:
-//!    * Multiplication can act on summed elements independently,
-//!      ie`z*(x+y)=z*x+z*y` and `(x+y)*z=x*z+y*z` for all `x`, `y`, and `z`.
-//!    * Represented by the [`Distributive`] trait
-//!    * Note that unlike other marker traits, this one takes a type parameter so that
-//!      multiplication between types can also be marked
-//!      (such as scalar-vector or matrix-vector multiplication)
-//! * The Exponentiation and Logarthm operations:
-//!    * Unary operations that map between addition and multiplication
-//!    * Represented with the [`Exponential`] trait
-//! * Properties regarding partial divisibility and factoring
-//!    * These traits _essentially_ measure how "integer-like" a particular ring is by abstracting
-//!      many properties and operations commonly associated with integers and natural numbers
-//!    * These include, but are not limited to:
-//!        * [Divisibility]
-//!        * [Primality]
-//!        * [GCD]
-//!        * [Euclidean Division](EuclideanDiv)
-//!        * [Factorizability](Factorizable)
-//!    * For more information, see each individual trait's documentation
-//!
-//!# Usage
-//!
-//!Similarly to the [group-like](crate::algebra::group_like) module, there are a number of
-//!trait aliases corresponding to a system of ring-like algebraic structures that form a heirarchy
-//!as represented in the following diagram:
-//!
-//!```text
-//!
-//!    Add Abelian Group   Mul Semigroup
-//!           |                 |
-//!           -------Ring--------
-//!                    |
-//!    ----------Unital Ring-------------------------
-//!    |                    |             |         |
-//!    |             Commutative Ring   Domain      |
-//!    |                    |             |         |
-//!    |                    ---------------         |
-//!    |                           |                |
-//!    |                     Integral Domain        |
-//!    |                           |                |
-//!Division Ring            ---GCD Domain---        |
-//!    |                    |              |        |
-//!    |                   UFD       Bezout Domain  |
-//!    |                    |              |        |
-//!    |                    ------PID-------        |
-//!    |                           |                |
-//!    |                    Euclidean Domain        |
-//!    |                           |                |
-//!    -------------Field-----------         Exponential Ring
-//!                   |                             |
-//!                   ------Exponential Field--------
-//!
-//!```
-//!
-//!Note also that in addition to the above system, there is a complementary system of "Semirings"
-//!that follows almost the same exact structure but doesn't require a subtraction operation.
-//!
-//!For more information, see each structure's documentation
-//!
-//!# Naming
-//!
-//!It is worth noting that in mathematical literature, there is some leniency in what certain
-//!structures are called, so some trait aliases may be named differently than what some are used to.
-//!
-//!In particular:
-//! * Some mathematicians and literature use the term "Ring" to refer to what is called a "Unital Ring"
-//!   here, instead preferring the term "Rng" for Rings without a multiplicative identity. In fact,
-//!   this convention is _probably_ the majority considering how little use there is for non-unital rings.
-//!   However, the choice was made against using the "Rng" system for the simple reason that it is
-//!   obviously highly prone to typesetting errors and is arguably pretty unintuitive for those learning
-//!   the terminology.
-//! * The term "Semiring" doesn't really have an established meaning in mathematical convention, so
-//!   the use here reflects a particular design choice more than a particular standard.
-//!
-
 use {crate::algebra::*, core::iter::Iterator};
 
-///A marker trait for stucts whose multiplication operation preserves addition,
-///ie `z*(x+y)=z*x+z*y` and `(x+y)*z=x*z+y*z` for all `x`, `y`, and `z`.
 pub trait Distributive<T = Self> {}
 
-///
-///Common methods regarding multiplicative inverses in a ring or semiring
-///
-///Do note that while for some rings these methods are relatively quick (like the integers),
-///for others, such as polynomials, this test might actually be relatively expensive
 pub trait Divisibility: Sized {
     ///Determines if there exists an element `x` such that `self*x` = `rhs`
     fn divides(self, rhs: Self) -> bool;
@@ -110,140 +16,33 @@ pub trait Divisibility: Sized {
     fn inverse(self) -> Option<Self>;
 }
 
-///
-///Methods for testing irreduciblity and primality
-///
-///Do note that for obvious reasons these methods should be assumed to be expensive by default.
-///Furthermore, given the difficulty of checking irreduciblity or primality for general rings,
-///it is entirely possible that there is simply no good algorithm for doing so, and as such, this
-///trait is _not_ a requirement for any of the ring categorization traits.
-///
-///Furthermore, it is important to note that in general, while all primes are irreducible,
-///the notions are **not** synonymous. In particular, in Z[sqrt(5)], 3 is irreducible
-///but is not prime. However, if all pairs of elements have a [GCD],
-///then all irreducibles are prime as well.
 pub trait Primality: Divisibility {
-    ///Determines if this element cannot be produced from the product of two other non-invertible elements
     fn irreducible(&self) -> bool;
 
-    ///
-    ///Determines if this element is prime
-    ///
-    ///An element `x` is prime if when `y` is a multiple of `x`, `a*b=y` implies that `x` divides
-    ///_either_ `a` _or_ `b`. Do note that this implies irreduciblity.
-    ///
     fn prime(&self) -> bool;
 }
 
-///
-///A marker trait for [semirings](Semiring) where there are no nonzero elements that multiply to zero
-///
-///ie. for all `x` and `y` where `x!=0` and `y!=0`, `x*y!=0`
-///
 pub trait NoZeroDivisors {}
 
 ///A trait for finding the greatest common divisor and least common multiple of two elements
 pub trait GCD: Sized {
-    ///
-    ///Finds the greatest common divisor of two elements
-    ///
-    ///An element `d` is a GCD of `x` and `y` if for all `z` where `z` divides both `x` and `y`,
-    ///`z` also divides `d`.
-    ///
-    ///Do note that this element will often not be _entirely_ unique. However, it _is_ the case that
-    ///any two GCDs in a [GCDDomain] will always differ by only multiplication by an invertible element.
-    ///For example, while _both_ -4 and 4 are GCDs of 12 and 8 (as Integers), -4 can be
-    ///transformed into 4 and vice versa by multiplying by -1
-    ///
     fn gcd(self, rhs: Self) -> Self;
-
-    ///
-    ///Finds the least common multiple of two elements
-    ///
-    ///An element `m` is a LCM of `x` and `y` if for all `z` where `x` and `y` both divide `z`,
-    ///`m` also divides `z`. This element is also not always unique in the same way as the gcd.
-    ///
-    ///Additionally, the GCD and LCM can always be computed from each other
-    ///by LCM(x,y) = (x*y)/GCD(x,y), so the existence of one always implies the existence of
-    ///the other
-    ///
     fn lcm(self, rhs: Self) -> Self;
 }
 
 ///A trait for finding the Bezout coefficients of a pair of elements
 pub trait Bezout: GCD {
-    ///
-    ///Bezout coefficients of a pair of elements
-    ///
-    ///The Bezout coefficients for `x` and `y` are a pair of elements `a` and `b` such that
-    ///`a*x + b*y = GCD(x,y)`. Note that like with the [GCD], these are only unique up to units.
-    ///However, the coefficients returned by this function must satisfy the defining identity for
-    ///the _particular_ GCD as returned by [GCD::gcd()]
-    ///
     #[inline]
     fn bezout_coefficients(self, rhs: Self) -> (Self, Self) {
         let (a, b, _) = self.bezout_with_gcd(rhs);
         (a, b)
     }
 
-    ///
-    ///Computes the [GCD](GCD::gcd()) and the [bezout coefficients](Bezout::bezout_coefficients)
-    ///in one function call
-    ///
     fn bezout_with_gcd(self, rhs: Self) -> (Self, Self, Self);
 }
 
-///
-///A marker trait for [semirings](Semiring) where each element's set of irreducible divisors is unique
-///
-///Note that this trait is independent of [`Factorizable`] and doesn't contain its own
-///`factors()` method since there are a number of notable examples of rings
-///where unique factorization is provable, but no known algorithm to find the factors is known.
-///This is the case for integer polynomials for example.
-///
 pub trait UniquelyFactorizable: Sized {}
 
-///
-///For [semirings](Semiring) that have a _known_ algorithm for decomposing elements into a set
-///of irreducible factors
-///
-///# Notes on "Irreduciblity"
-///
-///An irreducible factor as defined here is any element that cannot be written as a product of two
-///or more non-invertible elements. Note that this is technically, but not usually, different than
-///a "prime" element. For more information, see [`Divisibility`].
-///
-///# Uniqueness and Ordering
-///
-///This trait on its own makes **no guarantees** that the returned factors are unique or ordered
-/// in **any** way. The only requirements are that:
-///* The product of the factors must be the original number
-///* No factors of `1` are included
-///* `0` returns `[0]`
-///* Only *one* invertible element can be included and must be the first factor
-///    * For example, `-6` might return `[-1, 2, 3]` or `[-1, 3, 2]`, but not `[2, -1, 3]`
-///
-///Importantly, this means does that some structures **can** return different sets of factors
-///at different times. For example, in ℤ[√5], `6 = 2*3 = (1+√5)*(1-√5)` are both valid irreducible
-///factorizations.
-///
-///_However_, if the [`UniquelyFactorizable`] trait is _also_ implemented, this is restricted somewhat,
-///but only up to ordering and units.
-///
-///In particular, given two lists of factors for an element:
-///* There is still no guaranteed ordering, so the lists could be permuted somehow
-///* Some factors in the second might be multiplied by some invertible element from the first
-///  or return an extra invertible element in the list.
-///     * For instance, `-10` might return `[-5, 2]` or `[5,-2]` or `[2,-5]` or even `[-1,5,2]`
-///
-///Furthermore, there is no requirement for any sort of ordering, as the wide range of possible
-///implementing structures gives no obvious standard as to what that would be.
-///
-///_However_, implementors are highly encouraged to guarantee some sort of ordering and uniqueness
-///themselves using their particular properties. For instance, the implementation on the primitive integers
-///return all non-negative factors in order of increasing absolute magnitude with a `-1` at the beginning
-///for negative numbers, or a polynomial could factor as monic polynomials of increasing degree.
-///
 pub trait Factorizable: Sized {
     type Factors: Iterator<Item = Self>;
     fn factors(self) -> Self::Factors;
@@ -251,99 +50,13 @@ pub trait Factorizable: Sized {
 
 ///A trait for performing division with with remainder
 pub trait EuclideanDiv: Sized {
-    ///The specific type used for the Euclidean Norm
     type Naturals: Natural;
 
-    ///
-    ///A measure of the "degree" of a given element.
-    ///
-    ///This function must satisfy the following restrictions:
-    /// * `a.euclid_norm() <= (a*b).euclid_norm()` for all `a`,`b`
-    /// * for `(q,r) = div_alg()`, `r.euclid_norm() < q.euclid_norm()`
-    ///
-    ///Beyond these, there are no other restrictions. In particular, the Euclidean Norm need not be unique.
-    ///For example, the Euclidean norm of a polynomial is usually taken as the non-unique degree.
-    ///
     fn euclid_norm(&self) -> Self::Naturals;
-
-    ///The quotient from [Euclidean division](EuclideanDiv::div_alg)
     fn div_euc(self, rhs: Self) -> Self;
-
-    ///The remainder from the [Euclidean division](EuclideanDiv::div_alg)
     fn rem_euc(self, rhs: Self) -> Self;
-
-    ///
-    ///Divides a pair of elements with remainder
-    ///
-    ///Given inputs `a` and `b`, this produces a quotient-remainder pair `(q,r)` such that:
-    /// * `a = q*b + r`
-    /// * `r.euclid_norm() < q.euclid_norm()`
-    ///
-    ///Do note that in general, this result is **not** unique, the most striking example
-    ///simply being the Integers, for which **every** division with a remainder has the choice
-    ///of a positive or negative remainder. (Take `13 = 4*3 + 1 = 5*3 - 2` for example) Furthermore,
-    ///other rings, like the Guassian Integers, can have even more options, and others, like polynomials,
-    ///can have _infinite_ possible options.
-    ///
-    ///As such, it is up to the implementor to decide what the canonical form of this result is
-    ///and to communicate it as such, and this trait makes no guarantees that this has happened
-    ///
     fn div_alg(self, rhs: Self) -> (Self, Self);
 }
-
-///
-///A unary operation mapping addition into multiplication
-///
-///Rigourously, and exponential operation is a mapping `E:R->R` such that:
-/// * `E(x+y) = E(x)*E(y)` whenever `x*y = y*x`
-/// * `E(x) != 0`
-///
-///In addition to these base properties, this trait also stipulates that this function _not_ map
-///every element to 1, so as to rule out the trivial case.
-///
-///Furthmore, to clear up ambiguity, it is important to note that different variations on this
-///definition exists. For instance:
-/// * As already mentioned, some may allow the mapping to be non-trivial
-/// * Some may also allow `E(x) = 0`
-/// * For the [Real](crate::analysis::Real) and [Complex](crate::analysis::Complex) exponentials,
-///   there are a [multitude][1] of equivalent definitions that have no true effect on the mapping
-///
-///More importantly though, most authors specify that the `E(x+y) = E(x)*E(y)` for _all_ `x` and `y`
-///(such as on [Wikipedia][2])
-///However, doing so disallows both the Matrix exponential and Quaternion exponential as well
-///as the Clifford Algebra exponential, all of which are, frankly, the only reason to make the exponential
-///its own separate trait.
-///
-/// # Effects on Ring structure
-///
-///It is worth noting that _any_ ring that has a non-trivial exponential operation must automatically
-///have a characteristic of 0 (that is, `1+1+1+...+1` will never equal zero) and hence, has an
-///embedding of the Integers within it.
-///
-///This fact is easily proven as follows:
-/// * assume `char(R) = n != 0`
-/// * then, for any `x` in `R`, `nx = x+...+x = 0`, and,
-///   the [Frobenious automorphism][3] gives that `(x+y)ⁿ = xⁿ + yⁿ`
-/// * Hence, `(E(x) - 1)ⁿ = E(x)ⁿ - 1 = E(nx) - 1 = E(0) - 1 = 0`
-/// * Thus, we have that that `E(x) = 1` contradicting our assumtions
-///
-///Additionally, any element that is the output of the expoenential _must_ be an invertible element,
-///since <br> `1 = E(0) = E(x-x) = E(x)*E(-x)` implying `E(x) = E(x)⁻¹`
-///
-/// # Uniqueness
-///
-///In general, this characterization of the exponential function is *not* unique. However, in the
-///vast majority of cases, there is a canonical version that all others derive from _or_ there is only
-///one non-trivial case.
-///
-///For example, most real-algebras have infinitely many exponentials, but we get a canonical form
-///stipulating that the function satisfy the classic differential equation `E'(x) = E(x)` or some
-///variant.
-///
-/// [1]: https://en.wikipedia.org/wiki/Characterizations_of_the_exponential_function
-/// [2]: https://en.wikipedia.org/wiki/Exponential_field
-/// [3]: https://en.wikipedia.org/wiki/Frobenius_endomorphism
-///
 pub trait Exponential: Sized {
     ///
     ///The exponential of this ring element

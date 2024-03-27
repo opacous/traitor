@@ -1,101 +1,3 @@
-//!
-//!Traits for sets with a single binary operation and various properties of that operation
-//!
-//!Currently, the group operation is interpreted as being either the [`Add`] or [`Mul`] operation,
-//!and each of the group properties in this module have both an additive and multiplicative variant.
-//!
-//!As it stands currently, there is no real difference between the two, so it is ultimately up
-//!to the implementor's preference which one (or both) to use. Obviously though, addition and multiplication
-//!carry difference connotations in different contexts, so for clarity and consistency it is
-//!suggested to try to follow the general mathematical or programming conventions whenever possible.
-//!In particular:
-//!* Try to use multiplication for structures with a single operation
-//!except when convention dictates otherwise (such as the case of string concatenation).
-//!* While the option does exist, avoid implementing a non-commutative or especially a non-associative
-//!addition operation unless convention dictates otherwise.
-//!* Avoid implementing both an addition and multiplication where the multiplication *doesn't* distrubute
-//!or where the addition distributes instead.
-//!
-//!# Implementation
-//!
-//!To implement a struct as a group-like structure, the various group-like trait aliases will be usable
-//!according to which and how the following properties are implemented:
-//!* An additive or multiplicative binary operation:
-//!    * Has some function taking any pair of elements from `Self` and outputing any other member of `Self`
-//!    * Represented with either [`Add`] and [`AddAssign`] or [`Mul`] and [`MulAssign`] from [`core::ops`]
-//!    * (Note that for the auto-implementing categorization traits to work, the corresponding
-//!      "Assign" traits must be implemented.)
-//!* An identity element:
-//!    * Contains a unique element `0` or `1` such that `0+x=x` and `x+0=x` or
-//!     `1*x=x`,`x*1=x` for all `x`
-//!    * Represented with either [`Zero`] or [`One`] from [`num_traits`]
-//!* Invertibility:
-//!    * For every `x` in the set, there exists some other `y` in the struct such that
-//!     `x*y=1` and `y*x=1` (or `x+y=0` and `y+x=0` if additive), and there exists
-//!     a corresponding inverse operation.
-//!    * Represented with either [`Neg`], [`Sub`], and [`SubAssign`] or [`Inv`], [`Div`], and [`DivAssign`]
-//!      from [`core::ops`] and [`num_traits`]
-//!    * Note, again, that the "Assign" variants are required
-//!* Commutative:
-//!    * If the operation is order invariant, ie `x+y=y+x` or `x*y=y*x` for all `x` and `y`.
-//!    * Represented with [`AddCommutative`] or [`MulCommutative`]
-//!* Associative:
-//!    * If operation sequences are _evaluation_ order invariant, ie `x+(y+z)=(x+y)+z` or `x*(y*z)=(x*y)*z`
-//!     for all `x`, `y`, and `z`.
-//!    * Represented with [`AddAssociative`] or [`MulAssociative`]
-//!
-//!# Exponentiation
-//!
-//!In addition to these traits, it may be desirable to implement a [multiplication](Mul) or
-//![exponentiation](num_traits::Pow) operation with particular [integer](crate::algebra::Integer)
-//!or [natural](crate::algebra::Natural) type. See [`MulN`], [`MulZ`], [`PowN`], and [`PowZ`] for more details.
-//!
-//!# Usage
-//!
-//!Structs with the above properties implemented will be automatically usable under a number of trait
-//!aliases for particular group-like structures. These structures follow standard mathematical
-//!convention and roughly correspond to a heirarchy varying levels of "niceness" of each
-//!binary operation.
-//!
-//!These structures can be diagrammed as follows:
-//!```text
-//!    ---Magma---
-//!    |         |
-//!    |     Semigroup
-//!   Loop       |
-//!    |      Monoid
-//!    |         |
-//!    ---Group---
-//!         |
-//!   Abelian Group
-//!```
-//!where:
-//!* A [Magma](MulMagma) is a set with any binary operation
-//!* A [Semigroup](MulSemigroup) is an [associative](MulAssociative) Magma
-//!* A [Monoid](MulMonoid) is a Semigroup with an [identity](One) element
-//!* A [Loop](MulLoop) is a Magma with an [identity](One) element and [inverses](Invertable)
-//!* A [Group](MulGroup) is a Monoid with [inverses](Invertable), or alternatively, an [associative](MulAssociative) Loop
-//!* An [Abelian Group](MulAbelianGroup) is a [commutative](MulCommutative) Group
-//!
-//!For more information, see Wikipedia's article on
-//![algebraic structures](https://en.wikipedia.org/wiki/Outline_of_algebraic_structures)
-//!
-//!# Additional Notes
-//!
-//!It is worth noting that this particular system is certainly non-exhaustive and is missing a number
-//!of group-like structures. In particular, it is missing the Category-like structures and Quasigroups
-//!
-//!In the case of categories, this is because as it stands currently, there are few uses for partial
-//!operations while including them would add noticeable complexity.
-//!
-//!In the case of quasigroups however, the reason is because with the way the primitive types are
-//!designed, the only way to determine if an addition or subtraction operation is *truely* invertible
-//!is to check against the [Neg] or [Inv] traits, as the unsigned integers implement **both** division
-//!and subtraction even though technically those operations are not valid on all natural numbers.
-//!So seeing as quasigroups aren't particularly useful anyway, the decision was made to omit them.
-//!
-//!
-
 pub use self::{additive::*, multiplicative::*};
 
 ///Traits for group-like structures using addition
@@ -113,77 +15,10 @@ pub mod additive {
     #[allow(unused_imports)]
     use crate::algebra::Integer;
 
-    ///
-    ///A marker trait for stucts whose addition operation is evaluation order independent,
-    ///ie `x+(y+z)=(x+y)+z` for all `x`, `y`, and `z`.
-    ///
-    ///This is an extremely common property, and _most_ commonly used algebraic systems have it.
-    ///Nonetheless, there are some algebraic constructions like loop concatenation, the cross product,
-    ///lie algebras, and octonions that do not have this property, so the option to _not_ implement it exists.
-    ///
-    ///Note however, it is _highly_ recommended to implement non-associative structs as multiplicative
-    ///to be consistent with convention.
-    ///
     pub trait AddAssociative {}
 
-    ///
-    ///A marker trait for stucts whose addition operation is order independent,
-    ///ie `x+y=y+x` for all `x`, `y`, and `z`.
-    ///
-    ///This is an extremely common property, and _most_ commonly used algebraic systems have it.
-    ///Nonetheless, there are also a fairly number of algebraic constructions do not, such as
-    ///matrix multiplication, most finite groups, and in particular, string concatenation.
-    ///
-    ///Note however, it is _highly_ recommended to implement non-commutative structs
-    ///(except string concatentation) as multiplicative to be consistent with convention.
-    ///
     pub trait AddCommutative {}
 
-    ///
-    ///An auto-implemented trait for multiplication by [natural numbers](Natural) with
-    ///[associative](AddAssociative) types using repeated addition
-    ///
-    ///This is intended as a simple and easy way to compute object multiples in abstract algebraic
-    ///algorithms without resorting to explicitly applying addition repeatedly. For this reason, the
-    ///trait is automatically implemented for any relevant associative algebraic structure and
-    ///the supplied function is generic over the [`Natural`] type.
-    ///
-    ///```
-    ///# use maths_traits::algebra::*;
-    ///
-    /// assert_eq!(2.5f32.mul_n(4u8), 10.0);
-    /// assert_eq!(2.5f32.mul_n(4u16), 10.0);
-    /// assert_eq!(2.5f32.mul_n(4u128), 10.0);
-    /// assert_eq!(2.5f64.mul_n(4u8), 10.0);
-    /// assert_eq!(2.5f64.mul_n(4u16), 10.0);
-    /// assert_eq!(2.5f64.mul_n(4u128), 10.0);
-    ///
-    ///```
-    ///
-    ///# Usage Notes
-    ///
-    ///This trait is intended for use with *small* integers and can make no guarrantee that the
-    ///mathematical output will actually fit in the valid range for the output type. As such,
-    ///it is possible for the method to panic, overflow, or return an NaN or error value, so if this
-    ///is an expected possibility, it is recommended to use [TryInto](core::convert::TryInto) or
-    ///a different to perform the operation.
-    ///
-    ///It is worth noting that this particular design was chosen over returning a [Result]
-    ///or [Option] since this general behavior is already the default for primitive types
-    ///despite the relative ease with which it can happen.
-    ///
-    ///# Implementation Notes
-    ///
-    ///Note that while multiplication by natural numbers is very simply defined using
-    ///repeated addition, in order to add flexibility in implementation and the possibility for
-    ///proper optimization, the automatic implmentation of this trait will first try to use other
-    ///traits as a base before defaulting to the general [repeated_doubling] algorithm
-    ///
-    ///Specifically, for a given [Natural] type `N`, the auto-impl will first attempt to use
-    ///[`Mul<N>`](Mul), if implemented. If that fails, it will then try to convert using [`From<N>`](From)
-    ///and multiplying if if it implemented and the struct is a [Semiring].
-    ///Finally, in the general case, it will use the [repeated_doubling] function.
-    ///
     pub trait MulN: AddSemigroup + Zero {
         #[inline]
         fn mul_n<N: Natural>(self, n: N) -> Self {
@@ -225,52 +60,6 @@ pub mod additive {
 
     impl<G: AddSemigroup + Zero> MulN for G {}
 
-    ///
-    ///An auto-implemented trait for multiplication by [integers](Integer) with
-    ///[associative](AddAssociative) and [negatable](Negatable) types using
-    ///negation and repeated addition
-    ///
-    ///This is intended as a simple and easy way to compute object multiples in abstract algebraic
-    ///algorithms without resorting to explicitly applying addition repeatedly. For this reason, the
-    ///trait is automatically implemented for any relevant associative and negatable algebraic structure and
-    ///the supplied function is generic over the [`Integer`] type.
-    ///
-    ///```
-    ///# use maths_traits::algebra::*;
-    ///
-    /// assert_eq!(2.5f32.mul_z(5u8), 12.5);
-    /// assert_eq!(2.5f32.mul_z(5u128), 12.5);
-    /// assert_eq!(2.5f64.mul_z(5u8), 12.5);
-    /// assert_eq!(2.5f64.mul_z(5u128), 12.5);
-    /// assert_eq!(2.5f32.mul_z(-5i8), -12.5);
-    /// assert_eq!(2.5f32.mul_z(-5i64), -12.5);
-    ///
-    ///```
-    ///
-    ///# Usage Notes
-    ///
-    ///This trait is intended for use with *small* integers and can make no guarrantee that the
-    ///mathematical output will actually fit in the valid range for the output type. As such,
-    ///it is possible for the method to panic, overflow, or return an NaN or error value, so if this
-    ///is an expected possibility, it is recommended to use [TryInto](core::convert::TryInto) or
-    ///a different to perform the operation.
-    ///
-    ///It is worth noting that this particular design was chosen over returning a [Result]
-    ///or [Option] since this general behavior is already the default for primitive types
-    ///despite the relative ease with which it can happen.
-    ///
-    ///# Implementation Notes
-    ///
-    ///Note that while multiplication by integers is very simply defined using
-    ///repeated addition and subtraction, in order to add flexibility in implementation and the possibility for
-    ///proper optimization, the automatic implmentation of this trait will first try to use other
-    ///traits as a base before defaulting to the general [repeated_doubling_neg] algorithm
-    ///
-    ///Specifically, for a given [Integer] type `Z`, the auto-impl will first attempt to use
-    ///[`Mul<Z>`](Mul), if implemented. If that fails, it will then try to convert using [`From<Z>`](From)
-    ///and multiplying if if it implemented and the struct is a [Ring].
-    ///Finally, in the general case, it will use the [repeated_doubling_neg] function.
-    ///
     pub trait MulZ: AddMonoid + Negatable {
         #[inline]
         fn mul_z<N: IntegerSubset>(self, n: N) -> Self {
@@ -310,10 +99,6 @@ pub mod additive {
         }
     }
 
-    pub trait RefAddable = where for<'a> &'a Self: Sized + Add<&'a Self, Output = Self>;
-    pub trait RefSubable = where for<'a> &'a Self: Sized + Sub<&'a Self, Output = Self>;
-    pub trait RefNegable = where for<'a> &'a Self: Sized + Neg<Output = Self>;
-
     impl<G: AddMonoid + Negatable> MulZ for G {}
 
     ///A set with an fully described additive inverse
@@ -350,69 +135,9 @@ pub mod multiplicative {
     #[allow(unused_imports)]
     use crate::algebra::Integer;
 
-    ///
-    ///A marker trait for stucts whose multiplication operation is evaluation order independent,
-    ///ie `x*(y*z)=(x*y)*z` for all `x`, `y`, and `z`.
-    ///
-    ///This is an extremely common property, and _most_ commonly used algebraic systems have it.
-    ///Nonetheless, there are some algebraic constructions like loop concatenation, the cross product,
-    ///lie algebras, and octonions that do not have this property, so the option to _not_ implement it exists.
-    ///
     pub trait MulAssociative {}
-
-    ///
-    ///A marker trait for stucts whose addition operation is order independent,
-    ///ie `x+y=y+x` for all `x`, `y`, and `z`.
-    ///
-    ///This is an extremely common property, and _most_ commonly used algebraic systems have it.
-    ///Nonetheless, there are also a fairly number of algebraic constructions do not, such as
-    ///matrix multiplication and most finite groups.
-    ///
     pub trait MulCommutative {}
 
-    ///
-    ///An auto-implemented trait for exponentiation by [natural numbers](Natural) with
-    ///[associative](MulAssociative) types using repeated multiplication
-    ///
-    ///This is intended as a simple and easy way to compute object powers in abstract algebraic
-    ///algorithms without resorting to explicitly applying multiplication repeatedly. For this reason, the
-    ///trait is automatically implemented for any relevant associative algebraic structure and
-    ///the supplied function is generic over the [`Natural`] type.
-    ///
-    ///```
-    ///# use maths_traits::algebra::*;
-    ///
-    /// assert_eq!(2.0f32.pow_n(4u8), 16.0);
-    /// assert_eq!(2.0f32.pow_n(4u16), 16.0);
-    /// assert_eq!(2.0f32.pow_n(4u128), 16.0);
-    /// assert_eq!(2.0f64.pow_n(4u8), 16.0);
-    /// assert_eq!(2.0f64.pow_n(4u16), 16.0);
-    /// assert_eq!(2.0f64.pow_n(4u128), 16.0);
-    ///
-    ///```
-    ///# Usage Notes
-    ///
-    ///This trait is intended for use with *small* integers and can make no guarrantee that the
-    ///mathematical output will actually fit in the valid range for the output type. As such,
-    ///it is possible for the method to panic, overflow, or return an NaN or error value, so if this
-    ///is an expected possibility, it is recommended to use [TryInto](core::convert::TryInto) or
-    ///a different to perform the operation.
-    ///
-    ///It is worth noting that this particular design was chosen over returning a [Result]
-    ///or [Option] since this general behavior is already the default for primitive types
-    ///despite the relative ease with which it can happen.
-    ///
-    ///# Implementation Notes
-    ///
-    ///Note that while exponentiation by natural numbers is very simply defined using
-    ///repeated multiplication, in order to add flexibility in implementation and the possibility for
-    ///proper optimization, the automatic implmentation of this trait will first try to use other
-    ///traits as a base before defaulting to the general [repeated_squaring] algorithm
-    ///
-    ///Specifically, for a given [Natural] type `N`, the auto-impl will first attempt to use
-    ///[`Pow<N>`](Pow), if implemented, then if that fails, it will use the general
-    ///[repeated_squaring] algorithm
-    ///
     pub trait PowN: MulSemigroup + One {
         #[inline]
         fn pow_n<N: Natural>(self, n: N) -> Self {
@@ -437,50 +162,6 @@ pub mod multiplicative {
     }
     impl<G: MulSemigroup + One> PowN for G {}
 
-    ///
-    ///An auto-implemented trait for exponentiation by [integers](Integer) with
-    ///[associative](MulAssociative) and [invertable](Invertable) types using
-    ///inversion and repeated multiplication
-    ///
-    ///This is intended as a simple and easy way to compute object powers in abstract algebraic
-    ///algorithms without resorting to explicitly applying multiplication repeatedly. For this reason, the
-    ///trait is automatically implemented for any relevant associative and invertable algebraic structure and
-    ///the supplied function is generic over the [`Integer`] type.
-    ///
-    ///```
-    ///# use maths_traits::algebra::*;
-    ///
-    /// assert_eq!(2.0f32.pow_z(3u8), 8.0);
-    /// assert_eq!(2.0f32.pow_z(3u128), 8.0);
-    /// assert_eq!(2.0f64.pow_z(3u8), 8.0);
-    /// assert_eq!(2.0f64.pow_z(3u128), 8.0);
-    /// assert_eq!(2.0f32.pow_z(-3i8), 0.125);
-    /// assert_eq!(2.0f32.pow_z(-3i64), 0.125);
-    ///
-    ///```
-    ///# Usage Notes
-    ///
-    ///This trait is intended for use with *small* integers and can make no guarrantee that the
-    ///mathematical output will actually fit in the valid range for the output type. As such,
-    ///it is possible for the method to panic, overflow, or return an NaN or error value, so if this
-    ///is an expected possibility, it is recommended to use [TryInto](core::convert::TryInto) or
-    ///a different to perform the operation.
-    ///
-    ///It is worth noting that this particular design was chosen over returning a [Result]
-    ///or [Option] since this general behavior is already the default for primitive types
-    ///despite the relative ease with which it can happen.
-    ///
-    ///# Implementation Notes
-    ///
-    ///Note that while exponentiation by integers is very simply defined using
-    ///repeated multiplication and inversion, in order to add flexibility in implementation and the possibility for
-    ///proper optimization, the automatic implmentation of this trait will first try to use other
-    ///traits as a base before defaulting to the general [repeated_squaring_inv] algorithm
-    ///
-    ///Specifically, for a given [Natural] type `N`, the auto-impl will first attempt to use
-    ///[`Pow<N>`](Pow), if implemented, then if that fails, it will use the general
-    ///[repeated_squaring_inv] algorithm
-    ///
     pub trait PowZ: MulMonoid + Invertable {
         #[inline]
         fn pow_z<Z: IntegerSubset>(self, n: Z) -> Self {
@@ -504,10 +185,6 @@ pub mod multiplicative {
         }
     }
     impl<G: MulMonoid + Invertable> PowZ for G {}
-
-    pub trait RefMulable = where for<'a> &'a Self: Sized + Mul<&'a Self, Output = Self>;
-    pub trait RefDivable = where for<'a> &'a Self: Sized + Div<&'a Self, Output = Self>;
-    pub trait RefInvable = where for<'a> &'a Self: Sized + Inv<Output = Self>;
 
     ///A set with an fully described multiplicative inverse
     pub trait Invertable =
@@ -565,12 +242,6 @@ fn mul_pow_helper<E: Natural, R: Clone, Op: Fn(R, R) -> R>(mut b: R, mut p: E, o
     res
 }
 
-///
-///Raises a [monoid](MulMonoid) element to a integral power using inversion and repeated squaring
-///
-///# Panics
-///If both the base and power are `0`
-///
 #[inline]
 pub fn repeated_squaring_inv<E: IntegerSubset, R: MulGroup + Clone>(b: R, p: E) -> R {
     if p.negative() {
@@ -580,12 +251,6 @@ pub fn repeated_squaring_inv<E: IntegerSubset, R: MulGroup + Clone>(b: R, p: E) 
     }
 }
 
-///
-///Raises a [monoid](MulMonoid) element to a positive integer power using the repeated squaring algorithm
-///
-///# Panics
-///If both the base and power are `0`
-///
 #[inline]
 pub fn repeated_squaring<E: Natural, R: MulMonoid + Clone>(b: R, p: E) -> R {
     if p.is_zero() {

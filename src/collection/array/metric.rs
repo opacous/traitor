@@ -1,10 +1,10 @@
 use {
     crate::{
         analysis::{Metric, Real, RealExponential},
-        collection::{Array, ArraySub, OwnedArray, RealArray},
+        collection::{Array, ArraySub, RealArray},
+        ops::*,
     },
     num_traits::Zero,
-    std::process::Output,
 };
 
 // Haven't figured out yet how to use InnerProductMetric to impl this...
@@ -13,7 +13,7 @@ pub struct EuclideanMetric;
 impl<'a, X: ArraySub + RealArray> Metric<&'a X, X::Element> for EuclideanMetric {
     fn distance(&self, x1: &'a X, x2: &'a X) -> X::Element {
         x1.zip_fold(x2, X::Element::repr(0.0), |a, (x, y)| {
-            a + (x - y).pow(X::Element::repr(2.0))
+            a.add(&(x.sub(y)).pow(X::Element::repr(2.0)))
         })
         .sqrt()
     }
@@ -34,8 +34,9 @@ impl<'a, X: RealArray, W: RealArray> Metric<&'a X, X::Element> for WeightedEucli
         let mut acc = X::Element::zero();
 
         for (ind, w) in self.weights.iter().enumerate() {
-            acc += w.transfer::<X::Element>()
-                * (x1.nth(ind).unwrap() - &x2.nth(ind).unwrap()).pow(2.0.transfer())
+            acc += w
+                .transfer::<X::Element>()
+                .mul(&(x1.nth(ind).unwrap().sub(x2.nth(ind).unwrap())).pow(2.0.transfer()))
         }
 
         acc.sqrt()

@@ -1,54 +1,39 @@
 use {
     crate::{
-        algebra::{
-            Inv, Natural, RefAddable, RefDivable, RefInvable, RefMulable, RefNegable, RefSubable,
-        },
         analysis::{Metric, Real, RealExponential},
+        ops::*,
         Bound, B,
     },
-    core::{
-        mem::MaybeUninit,
-        ops::{Add, Div, Mul, Sub},
-    },
+    core::{iter, mem::MaybeUninit},
     num_traits::ToPrimitive,
+    replace_with::replace_with_or_abort,
     traitor_macros::auto_gen_impl,
 };
 
 mod metric;
 pub use metric::*;
 
+mod inline;
+pub use inline::*;
+
+mod vec;
+pub use vec::*;
+
+mod smallvec;
+pub use smallvec::*;
+
 /// An array is a thing that permits random access at integer offsets.
 pub trait Array: Sized {
     type Element;
-    type GenOut: OwnedArray;
 
-    fn nth(&self, n: usize) -> Option<&Self::Element>;
+    fn nth<'a>(&'a self, n: usize) -> Option<&'a Self::Element>;
     fn len(&self) -> usize;
-    fn generate<F: Fn(usize) -> Self::Element>(len: usize, gen: F) -> Self::GenOut;
-
-    /// Auto Generated functions
-    /// Applies `f` to each pair of components of `self` and `other`.
-    #[inline(always)]
-    fn component_wise(
-        &self,
-        other: &Self,
-        mut f: impl Fn(&Self::Element, &Self::Element) -> Self::Element,
-    ) -> Self::GenOut {
-        Self::generate(self.len(), |i| {
-            f(self.nth(i).unwrap(), other.nth(i).unwrap())
-        })
-    }
-
-    #[inline(always)]
-    fn map(&self, mut f: impl Fn(&Self::Element) -> Self::Element) -> Self::GenOut {
-        Self::generate(self.len(), |i| f(self.nth(i).unwrap()))
-    }
 
     #[inline(always)]
     fn fold<A>(&self, start_value: A, mut f: impl FnMut(A, &Self::Element) -> A) -> A {
         let mut accumulated = start_value;
-        for i in 0..self.len().to_usize().unwrap() {
-            accumulated = f(accumulated, self.nth(i).unwrap());
+        for val in self.iter() {
+            accumulated = f(accumulated, val);
         }
         accumulated
     }
@@ -62,8 +47,8 @@ pub trait Array: Sized {
         mut f: impl FnMut(A, (&Self::Element, &Self::Element)) -> A,
     ) -> A {
         let mut accumulated = start_value;
-        for i in 0..self.len().to_usize().unwrap() {
-            accumulated = f(accumulated, (self.nth(i).unwrap(), other.nth(i).unwrap()));
+        for (x, y) in self.iter().zip(other.iter()) {
+            accumulated = f(accumulated, (x, y));
         }
         accumulated
     }
@@ -78,16 +63,34 @@ pub trait Array: Sized {
 }
 
 // an array that generates itself
-pub trait OwnedArray = Array<GenOut = Self> + ArrayMut;
+pub trait GenArray: Array + ArrayMut {
+    fn generate(gen: impl Iterator<Item = Self::Element>) -> Self;
 
-#[auto_gen_impl(CloneArrayConstraint)]
-pub trait CloneArray: Array<Element: Clone> + Sized {
-    fn from_value(value: Self::Element, len: usize) -> Self::GenOut {
-        Self::generate(len, |_| value.clone())
+    #[inline(always)]
+    fn component_wise(
+        &self,
+        other: &Self,
+        mut f: impl Fn(&Self::Element, &Self::Element) -> Self::Element,
+    ) -> Self {
+        Self::generate(
+            self.iter()
+                .take(self.len())
+                .zip(other.iter().take(other.len()))
+                .map(|(x, y)| f(x, y)),
+        )
     }
 
-    fn dup(&self) -> Self::GenOut {
-        Self::generate(self.len(), |ind| self.nth(ind).unwrap().clone())
+    #[inline(always)]
+    fn map(&self, mut f: impl Fn(&Self::Element) -> Self::Element) -> Self {
+        Self::generate(self.iter().map(|x| f(x)))
+    }
+}
+
+#[auto_gen_impl(CloneArrayConstraint)]
+pub trait CloneArray: GenArray<Element: Clone> + Clone + Sized {
+    #[inline(always)]
+    fn from_value(value: Self::Element, len: usize) -> Self {
+        Self::generate(iter::repeat(value).take(len))
     }
 }
 
@@ -107,8 +110,14 @@ pub trait ArrayMut: Array {
             f(self.nth_mut(i).unwrap());
         }
     }
+
+    fn map_inplace(&mut self, mut f: impl FnMut(Self::Element) -> Self::Element) {
+        self.iter_mut()
+            .for_each(|x| replace_with_or_abort(x, |v| f(v)))
+    }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArrayIter<'a, A: Array> {
     offset: usize,
     array: &'a A,
@@ -144,225 +153,105 @@ impl<'a, A: 'a + ArrayMut> Iterator for ArrayMutIter<'a, A> {
     }
 }
 
-pub trait StaticLenArray<T> {
+pub trait StaticLenArray {
+    type Element;
+
     fn len() -> usize;
-    fn generate<F: Fn(usize) -> T>(gen: F) -> Self;
-}
-
-impl<T> Array for Vec<T> {
-    type Element = T;
-    type GenOut = Vec<T>;
-
-    #[inline(always)]
-    fn nth(&self, n: usize) -> Option<&T> {
-        self.get(n.to_usize()?)
-    }
-
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    #[inline(always)]
-    fn generate<F: Fn(usize) -> T>(len: usize, gen: F) -> Self {
-        let len = len.to_usize().unwrap();
-        let mut retv = Vec::with_capacity(len);
-        for ind in 0..len {
-            retv.push(gen(ind))
-        }
-        retv
-    }
-}
-
-impl<T> ArrayMut for Vec<T> {
-    #[inline(always)]
-    fn nth_mut(&mut self, n: usize) -> Option<&mut T> {
-        self.get_mut(n)
-    }
-}
-
-impl<T, const L: usize> Array for [T; L]
-where
-    [T; L]: Sized,
-{
-    type Element = T;
-    type GenOut = [T; L];
-
-    #[inline(always)]
-    fn nth(&self, n: usize) -> Option<&T> {
-        self.get(n)
-    }
-
-    #[inline(always)]
-    fn len(&self) -> usize {
-        L
-    }
-
-    #[inline(always)]
-    fn generate<F: Fn(usize) -> T>(_: usize, gen: F) -> Self {
-        <Self as StaticLenArray<T>>::generate(gen)
-    }
-}
-
-impl<T, const L: usize> ArrayMut for [T; L]
-where
-    [T; L]: Sized,
-{
-    #[inline(always)]
-    fn nth_mut(&mut self, n: usize) -> Option<&mut T> {
-        self.get_mut(n.to_usize()?)
-    }
-}
-
-impl<T, const L: usize> StaticLenArray<T> for [T; L]
-where
-    [T; L]: Sized,
-{
-    #[inline(always)]
-    fn len() -> usize {
-        L
-    }
-
-    #[inline(always)]
-    fn generate<F: Fn(usize) -> T>(gen: F) -> Self {
-        let mut array: [T; L] = unsafe { MaybeUninit::uninit().assume_init() };
-
-        for (i, element) in array.iter_mut().enumerate() {
-            *element = gen(i);
-        }
-
-        array
-    }
+    fn generate(gen: impl Iterator<Item = Self::Element>) -> Self;
 }
 
 #[auto_gen_impl(OrdArrayConstraint)]
-pub trait OrdArray: Array<Element: PartialOrd + Copy> {
+pub trait OrdArray: GenArray + Array<Element: PartialOrd + Copy> {
     fn eq(&self, other: &Self) -> bool {
         self.iter()
             .zip(other.iter())
             .fold(true, |acc, (a, b)| acc && a == b)
     }
 
-    fn min(&self, other: &Self) -> Self::GenOut {
-        Self::generate(self.len(), |ind| {
-            let lhs = self.nth(ind).unwrap();
-            let rhs = other.nth(ind).unwrap();
-
-            if lhs.lt(rhs) {
-                *lhs
-            } else {
-                *rhs
-            }
-        })
+    fn min(&self, other: &Self) -> Self {
+        Self::generate(
+            self.iter()
+                .zip(other.iter())
+                .map(|(x, y)| if x.lt(y) { *x } else { *y }),
+        )
     }
 
-    fn max(&self, other: &Self) -> Self::GenOut {
-        Self::generate(self.len(), |ind| {
-            let lhs = self.nth(ind).unwrap();
-            let rhs = other.nth(ind).unwrap();
-
-            if lhs.gt(rhs) {
-                *lhs
-            } else {
-                *rhs
-            }
-        })
+    fn max(&self, other: &Self) -> Self {
+        Self::generate(
+            self.iter()
+                .zip(other.iter())
+                .map(|(x, y)| if x.gt(y) { *x } else { *y }),
+        )
     }
 }
 
 #[auto_gen_impl(ArraySubConstraint)]
-pub trait ArraySub: Array<Element: RefSubable> {
+pub trait ArraySub: Array<Element: RefSub> + GenArray {
     #[inline(always)]
-    fn sub(self, other: &Self) -> Self::GenOut {
-        self.component_wise(other, |x, y| x - y)
+    fn array_sub(&self, other: &Self) -> Self {
+        self.component_wise(other, |x, y| x.sub(y))
     }
 }
 
 #[auto_gen_impl(ArrayAddConstraint)]
-pub trait ArrayAdd: Array<Element: RefAddable> {
+pub trait ArrayAdd: Array<Element: RefAdd> + GenArray {
     #[inline(always)]
-    fn add(self, other: &Self) -> Self::GenOut {
-        self.component_wise(other, |x, y| x + y)
+    fn array_add(&self, other: &Self) -> Self {
+        self.component_wise(other, |x, y| x.add(y))
     }
+
+    // #[inline(always)]
+    // fn offset(self, offset: Self::Element) -> Self::GenOut {
+    //     self.map(|x| x.add(offset))
+    // }
 }
 
 #[auto_gen_impl(ArrayMulConstraint)]
-pub trait ArrayMul: Array<Element: RefMulable> {
+pub trait ArrayMul: Array<Element: RefMul> + GenArray {
     #[inline(always)]
-    fn mul(self, other: &Self) -> Self::GenOut {
-        self.component_wise(other, |x, y| x * y)
+    fn array_mul(&self, other: &Self) -> Self {
+        self.component_wise(other, |x, y| x.mul(y))
     }
+
+    // #[inline(always)]
+    // fn scale(&self, offset: &Self::Element) -> Self::GenOut {
+    //     self.map(|x| x * offset)
+    // }
 }
 
 #[auto_gen_impl(ArrayDivConstraint)]
-pub trait ArrayDiv: Array<Element: RefDivable> {
+pub trait ArrayDiv: Array<Element: RefDiv> + GenArray {
     #[inline(always)]
-    fn div(self, other: &Self) -> Self::GenOut {
-        self.component_wise(other, |x, y| x / y)
+    fn array_div(&self, other: &Self) -> Self {
+        self.component_wise(other, |x, y| x.div(y))
+    }
+}
+
+#[auto_gen_impl(ArrayPartialEqConstraint)]
+pub trait ArrayPartialEq: Array<Element: PartialEq> {
+    #[inline(always)]
+    fn array_eq(&self, other: &Self) -> bool {
+        self.zip_fold(other, true, |acc, (x, y)| acc && (x == y))
     }
 }
 
 #[auto_gen_impl(ArrayNegConstraint)]
-pub trait ArrayNeg: Array<Element: RefNegable> {
+pub trait ArrayNeg: Array<Element: RefNeg> + GenArray {
     #[inline(always)]
-    fn neg(self) -> Self::GenOut {
-        self.map(|x| -x)
+    fn array_neg(&self) -> Self {
+        self.map(|x| x.neg())
     }
 }
 
-// pub trait ArrayInvConstraint = Array<Element: RefInvable>;
-// pub trait ArrayInv: ArrayInvConstraint {
-//     #[inline(always)]
-//     fn inv(self) -> Self::GenOut {
-//         self.map(|x| x.inv())
-//     }
-// }
-// impl<A: ArrayInvConstraint> ArrayInv for A {}
-
-// A#[macro_export]
-// macro_rules! auto_trait {
-//     ($trait_name:ident : $constraint_name:ident = $constaints:stmt) => {
-//         pub trait $constraint_name = $constraints;
-//         impl<A: $constaint_name> $trait_name for A {}
-//     };
-// }
-//
-// auto_trait!(ArrayInv : ArrayInvConstraint = Array<Element: RefInvable>);
 #[auto_gen_impl(ArrayInvConstraint)]
-pub trait ArrayInv: Array<Element: RefInvable> {
+pub trait ArrayInv: Array<Element: RefInv> + GenArray {
     #[inline(always)]
-    fn inv(self) -> Self::GenOut {
+    fn array_inv(&self) -> Self {
         self.map(|x| x.inv())
-    }
-}
-impl<A: Array> Array for Bound<A> {
-    type Element = A::Element;
-    type GenOut = Bound<A::GenOut>;
-    #[inline(always)]
-    fn nth(&self, n: usize) -> Option<&A::Element> {
-        self.0.nth(n)
-    }
-
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    #[inline(always)]
-    fn generate<F: Fn(usize) -> A::Element>(len: usize, gen: F) -> Self::GenOut {
-        A::generate(len, gen).b()
-    }
-}
-
-impl<A: ArrayMut> ArrayMut for Bound<A> {
-    #[inline(always)]
-    fn nth_mut(&mut self, n: usize) -> Option<&mut A::Element> {
-        self.0.nth_mut(n)
     }
 }
 
 impl<'a, A: Array> Array for &'a A {
-    type GenOut = A::GenOut;
     type Element = A::Element;
 
     #[inline(always)]
@@ -375,114 +264,171 @@ impl<'a, A: Array> Array for &'a A {
         (**self).len()
     }
 
-    #[inline(always)]
-    fn generate<F: Fn(usize) -> Self::Element>(len: usize, gen: F) -> Self::GenOut {
-        A::generate(len, gen)
+    // #[inline(always)]
+    // fn generate(
+    //     len: usize,
+    //     gen: impl Iterator<Item = <Self::GenOut as Array>::Element>,
+    // ) -> Self::GenOut {
+    //     A::generate(len, gen)
+    // }
+}
+
+// impl<'a, A: Array> Array for &'a mut A {
+//     type GenOut = A::GenOut;
+//     type Element = A::Element;
+
+//     #[inline(always)]
+//     fn nth(&self, n: usize) -> Option<&Self::Element> {
+//         (**self).nth(n)
+//     }
+
+//     #[inline(always)]
+//     fn len(&self) -> usize {
+//         (**self).len()
+//     }
+
+//     // #[inline(always)]
+//     // fn generate(
+//     //     len: usize,
+//     //     gen: impl Iterator<Item = <Self::GenOut as Array>::Element>,
+//     // ) -> Self::GenOut {
+//     //     A::generate(len, gen)
+//     // }
+// }
+
+// impl<'a, A: ArrayMut> ArrayMut for &'a mut A {
+//     #[inline(always)]
+//     fn nth_mut(&mut self, n: usize) -> Option<&mut Self::Element> {
+//         (*self).nth_mut(n)
+//     }
+// }
+
+impl<A> PartialEq for Bound<A>
+where
+    A: ArrayPartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        <A as ArrayPartialEq>::array_eq(&self.0, &other.0)
     }
 }
 
-impl<'a, A: Array> Array for &'a mut A {
-    type GenOut = A::GenOut;
-    type Element = A::Element;
+// impl<'a, A> crate::ops::Add for &'a A
+// where
+//     A: ArrayAdd,
+// {
+//     type Output = A::GenOut;
 
-    #[inline(always)]
-    fn nth(&self, n: usize) -> Option<&Self::Element> {
-        (**self).nth(n)
-    }
+//     fn add(self, rhs: Self) -> Self::Output {
+//         self.add(&rhs)
+//     }
+// }
 
-    #[inline(always)]
-    fn len(&self) -> usize {
-        (**self).len()
-    }
+// impl<'a, A> crate::ops::Sub for &'a A
+// where
+//     A: ArraySub,
+// {
+//     type Output = A::GenOut;
 
-    #[inline(always)]
-    fn generate<F: Fn(usize) -> Self::Element>(len: usize, gen: F) -> Self::GenOut {
-        A::generate(len, gen)
-    }
-}
+//     fn sub(self, rhs: Self) -> Self::Output {
+//         self.sub(&rhs)
+//     }
+// }
 
-impl<'a, A: ArrayMut> ArrayMut for &'a mut A {
-    #[inline(always)]
-    fn nth_mut(&mut self, n: usize) -> Option<&mut Self::Element> {
-        (*self).nth_mut(n)
-    }
-}
+// impl<'a, A> crate::ops::Neg for &'a A
+// where
+//     A: ArrayNeg,
+// {
+//     type Output = A::GenOut;
 
-impl<A> std::ops::Add for Bound<A>
+//     fn neg(self) -> Self::Output {
+//         self.neg()
+//     }
+// }
+
+// impl<'a, A> crate::ops::Mul for &'a A
+// where
+//     A: ArrayMul,
+// {
+//     type Output = A::GenOut;
+
+//     fn mul(self, rhs: Self) -> Self::Output {
+//         self.mul(&rhs)
+//     }
+// }
+
+// impl<'a, A> crate::ops::Div for &'a A
+// where
+//     A: ArrayDiv,
+// {
+//     type Output = A::GenOut;
+
+//     fn div(self, rhs: Self) -> Self::Output {
+//         self.div(&rhs)
+//     }
+// }
+
+impl<A> crate::ops::Add for A
 where
     A: ArrayAdd,
 {
-    type Output = A::GenOut;
+    type Output = A;
 
     fn add(self, rhs: Self) -> Self::Output {
-        self.0.add(&rhs.0)
+        self.array_add(&rhs)
     }
 }
 
-impl<A> std::ops::Sub for Bound<A>
+impl<A> crate::ops::Sub for A
 where
     A: ArraySub,
 {
-    type Output = A::GenOut;
+    type Output = A;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        self.0.sub(&rhs.0)
+        self.array_sub(&rhs)
     }
 }
 
-impl<A> std::ops::Neg for Bound<A>
+impl<A> crate::ops::Neg for A
 where
     A: ArrayNeg,
 {
-    type Output = A::GenOut;
+    type Output = A;
 
     fn neg(self) -> Self::Output {
-        self.0.neg()
+        self.array_neg()
     }
 }
 
-impl<A> std::ops::Mul for Bound<A>
+impl<A> crate::ops::Mul for A
 where
     A: ArrayMul,
 {
-    type Output = A::GenOut;
+    type Output = A;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        self.0.mul(&rhs.0)
+        self.array_mul(&rhs)
     }
 }
 
-impl<A> std::ops::Div for Bound<A>
+impl<A> crate::ops::Div for A
 where
     A: ArrayDiv,
 {
-    type Output = A::GenOut;
+    type Output = A;
 
     fn div(self, rhs: Self) -> Self::Output {
-        self.0.div(&rhs.0)
+        self.array_div(&rhs)
     }
 }
 
-impl<A> Inv for Bound<A>
-where
-    A: ArrayInv,
-{
-    type Output = A::GenOut;
-
-    fn inv(self) -> Self::Output {
-        self.0.inv()
-    }
-}
-
-pub trait RefMath = RefAddable + RefSubable + RefNegable + RefMulable + RefDivable + RefInvable;
+pub trait RefMath = RefAdd + RefSub + RefNeg + RefMul + RefDiv + RefInv;
 pub trait ArrayMath = ArrayAdd + ArraySub + ArrayNeg + ArrayMul + ArrayDiv + ArrayInv;
 
 /// Array of reals
 #[auto_gen_impl(RealArrayConstraint)]
-pub trait RealArray:
-    Array<Element: Real, GenOut: Array<Element: Real> + CloneArray> + OrdArray + ArrayMath + CloneArray
-{
-    fn repr(value: f64) -> <Self::GenOut as Array>::Element {
-        <Self::GenOut as Array>::Element::repr(value)
+pub trait RealArray: Array<Element: Real + RefMath> + OrdArray + ArrayMath + CloneArray {
+    fn repr(value: f64) -> Self::Element {
+        Self::Element::repr(value)
     }
 }

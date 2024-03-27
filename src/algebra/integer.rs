@@ -1,7 +1,3 @@
-//!
-//!Traits for integers and natural numbers
-//!
-
 use {
     crate::{algebra::*, analysis::ordered::*},
     core::{
@@ -12,7 +8,6 @@ use {
     num_traits::{FromPrimitive, ToPrimitive},
 };
 
-///Aliases conversion traits to and from the primitive integer types
 pub trait CastPrimInt = TryFrom<i8>
     + TryFrom<u8>
     + TryFrom<i16>
@@ -39,21 +34,6 @@ pub trait IntoPrimInt = TryInto<i8>
     + TryInto<usize>
     + TryInto<isize>;
 
-///
-///A subset of the Integers that has all of the major integer operations
-///
-///This includes:
-/// * Basic ring operations
-/// * Euclidean division any everything implied by having it
-/// * Algebraic ordering properties and archimedian division
-/// * Additional operations conventionally implemented on integer types
-///
-///In practice, this means that a type implementing this trait must be either a
-///representation of the natural numbers or the integers as a whole.
-///
-///Furthermore, this trait contains associated types referring to an unsigned and signed type of
-///similar precision to make it easier to manage the broader system of types used in integer algorithms
-///
 pub trait IntegerSubset:
     Ord
     + Eq
@@ -74,114 +54,49 @@ pub trait IntegerSubset:
     + DivAssign<Self>
     + RemAssign<Self>
 {
-    ///
-    ///This type's corresponding signed Integer representation
-    ///
-    ///Implementors should guarantee that this type has the same theoretical bit precision as
-    ///the Unsigned type
-    ///
     type Signed: Integer + IntegerSubset<Signed = Self::Signed, Unsigned = Self::Unsigned>;
 
-    ///
-    ///This type's corresponding unsigned Integer representation
-    ///
-    ///Implementors should guarantee that this type has the same theoretical bit precision as
-    ///the Signed type
-    ///
     type Unsigned: Natural + IntegerSubset<Signed = Self::Signed, Unsigned = Self::Unsigned>;
 
-    ///
-    ///Converts `self` to a signed integer representation
-    ///
-    ///Note that this has the same guarantees as the primitive `as` operation
-    ///and can thus panic on overflow
-    ///
     fn as_signed(self) -> Self::Signed;
 
-    ///
-    ///Converts `self` into an unsigned integer representation
-    ///
-    ///Note that this has the same guarantees as the primitive `as` operation
-    ///and can thus panic on underflow
-    ///
     fn as_unsigned(self) -> Self::Unsigned;
 
-    ///
-    ///Takes the absolute value and converts into an unsigned integer representation
-    ///
-    ///Implementors should guarantee that this conversion never fails or panics since
-    ///the unsigned and signed types are assumed to be of the same theoretical bit precision
-    ///
     #[inline]
     fn abs_unsigned(self) -> Self::Unsigned {
         self.abs().as_unsigned()
     }
 
-    ///A shorthand for `1+1`
     #[inline]
     fn two() -> Self {
         Self::one() + Self::one()
     }
 
-    ///
-    ///Multiplies by two
-    ///
-    ///This is meant both as convenience and to expose the `<<` operator for representations that
-    ///support it. As such, this method has the _potential_ to be faster than normal multiplication
-    ///
     #[inline]
     fn mul_two(self) -> Self {
         self * Self::two()
     }
 
-    ///
-    ///Divides by two
-    ///
-    ///This is meant both as convenience and to expose the `>>` operator for representations that
-    ///support it. As such, this method has the _potential_ to be faster than normal division
-    ///
     #[inline]
     fn div_two(self) -> Self {
         self / Self::two()
     }
 
-    ///Determines if a number is divisible by two
     #[inline]
     fn even(&self) -> bool {
         Self::two().divides(self.clone())
     }
 
-    ///Determines if a number is not divisible by two
     #[inline]
     fn odd(&self) -> bool {
         !self.even()
     }
 }
 
-///An [IntegerSubset] that specifically represents an unsigned integer
 pub trait Natural: IntegerSubset<Unsigned = Self> {}
 
-///An [IntegerSubset] that specifically represents a signed integer
 pub trait Integer: IntegerSubset<Signed = Self> + ArchUnitalRing {}
 
-///
-///An iterator over the factors of an integer using the
-///[trial division](https://en.wikipedia.org/wiki/Trial_division) algorithm
-///
-///Given the nature of the algorithm, factors are guaranteed to be returned ascending order,
-///with a factor of `-1` given at the beginning if the number is negative, a single `0` given
-///if zero, and no factors returned if the original integer is `1`.
-///
-///```
-/// # use maths_traits::algebra::*;
-///let mut factors = TrialDivision::factors_of(-15);
-///
-///assert_eq!(factors.next(), Some(-1));
-///assert_eq!(factors.next(), Some(3));
-///assert_eq!(factors.next(), Some(5));
-///assert_eq!(factors.next(), None);
-///```
-///
 pub struct TrialDivision<Z: IntegerSubset> {
     x: Z,
     f: Z,
@@ -189,7 +104,6 @@ pub struct TrialDivision<Z: IntegerSubset> {
 }
 
 impl<Z: IntegerSubset> TrialDivision<Z> {
-    ///constructs an iterator over the factors of the argument
     pub fn factors_of(x: Z) -> Self {
         TrialDivision {
             x: x,
@@ -198,17 +112,10 @@ impl<Z: IntegerSubset> TrialDivision<Z> {
         }
     }
 
-    ///the product of the remaining factors to be iterated over
     pub fn remaining(&self) -> Z {
         self.x.clone()
     }
 
-    ///
-    ///the current factor being tested in the algorithm
-    ///
-    ///Note that there is no guarantee that this actually _is_ a factor
-    ///**or** that this function's result will change after an iterator step
-    ///
     pub fn current_factor(&self) -> Z {
         self.f.clone()
     }
