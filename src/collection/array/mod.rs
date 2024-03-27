@@ -2,7 +2,6 @@ use {
     crate::{
         analysis::{Metric, Real, RealExponential},
         ops::*,
-        Bound, B,
     },
     core::{iter, mem::MaybeUninit},
     num_traits::ToPrimitive,
@@ -303,14 +302,14 @@ impl<'a, A: Array> Array for &'a A {
 //     }
 // }
 
-impl<A> PartialEq for Bound<A>
-where
-    A: ArrayPartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        <A as ArrayPartialEq>::array_eq(&self.0, &other.0)
-    }
-}
+// impl<A> PartialEq for Bound<A>
+// where
+//     A: ArrayPartialEq,
+// {
+//     fn eq(&self, other: &Self) -> bool {
+//         <A as ArrayPartialEq>::array_eq(&self.0, &other.0)
+//     }
+// }
 
 // impl<'a, A> crate::ops::Add for &'a A
 // where
@@ -367,60 +366,60 @@ where
 //     }
 // }
 
-impl<A> crate::ops::Add for A
-where
-    A: ArrayAdd,
-{
-    type Output = A;
+// impl<A> crate::ops::Add for A
+// where
+//     A: ArrayAdd,
+// {
+//     type Output = A;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        self.array_add(&rhs)
-    }
-}
+//     fn add(self, rhs: Self) -> Self::Output {
+//         self.array_add(&rhs)
+//     }
+// }
 
-impl<A> crate::ops::Sub for A
-where
-    A: ArraySub,
-{
-    type Output = A;
+// impl<A> crate::ops::Sub for A
+// where
+//     A: ArraySub,
+// {
+//     type Output = A;
 
-    fn sub(self, rhs: Self) -> Self::Output {
-        self.array_sub(&rhs)
-    }
-}
+//     fn sub(self, rhs: Self) -> Self::Output {
+//         self.array_sub(&rhs)
+//     }
+// }
 
-impl<A> crate::ops::Neg for A
-where
-    A: ArrayNeg,
-{
-    type Output = A;
+// impl<A> crate::ops::Neg for A
+// where
+//     A: ArrayNeg,
+// {
+//     type Output = A;
 
-    fn neg(self) -> Self::Output {
-        self.array_neg()
-    }
-}
+//     fn neg(self) -> Self::Output {
+//         self.array_neg()
+//     }
+// }
 
-impl<A> crate::ops::Mul for A
-where
-    A: ArrayMul,
-{
-    type Output = A;
+// impl<A> crate::ops::Mul for A
+// where
+//     A: ArrayMul,
+// {
+//     type Output = A;
 
-    fn mul(self, rhs: Self) -> Self::Output {
-        self.array_mul(&rhs)
-    }
-}
+//     fn mul(self, rhs: Self) -> Self::Output {
+//         self.array_mul(&rhs)
+//     }
+// }
 
-impl<A> crate::ops::Div for A
-where
-    A: ArrayDiv,
-{
-    type Output = A;
+// impl<A> crate::ops::Div for A
+// where
+//     A: ArrayDiv,
+// {
+//     type Output = A;
 
-    fn div(self, rhs: Self) -> Self::Output {
-        self.array_div(&rhs)
-    }
-}
+//     fn div(self, rhs: Self) -> Self::Output {
+//         self.array_div(&rhs)
+//     }
+// }
 
 pub trait RefMath = RefAdd + RefSub + RefNeg + RefMul + RefDiv + RefInv;
 pub trait ArrayMath = ArrayAdd + ArraySub + ArrayNeg + ArrayMul + ArrayDiv + ArrayInv;
